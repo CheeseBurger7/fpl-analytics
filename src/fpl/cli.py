@@ -1,4 +1,4 @@
-"""Command line entry point: ``fpl snapshot | history | entry``."""
+"""Command line entry point: ``fpl snapshot | history | import-history | entry``."""
 
 from __future__ import annotations
 
@@ -9,11 +9,13 @@ import sys
 from pathlib import Path
 
 from fpl.api import FPLClient
+from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, seasons_between
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
 from fpl.store import Store
 
 DEFAULT_DB = Path("data/processed/fpl.duckdb")
 DEFAULT_PARQUET = Path("data/processed/snapshots")
+LAST_COMPLETE_SEASON = "2025-26"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     h = sub.add_parser("history", help="fetch per-fixture player history")
     h.add_argument("--element", type=int, action="append", help="limit to these player ids")
+
+    i = sub.add_parser("import-history", help="load past seasons from vaastav/FPL dataset")
+    i.add_argument("--from", dest="first", default=FIRST_SEASON, help="first season, e.g. 2016-17")
+    i.add_argument("--to", dest="last", default=LAST_COMPLETE_SEASON, help="last season")
+    i.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
+    i.add_argument("--refresh", action="store_true", help="re-download cached CSVs")
 
     e = sub.add_parser("entry", help="pull a manager's picks, history and transfers")
     e.add_argument(
@@ -62,6 +70,17 @@ def main(argv: list[str] | None = None) -> int:
                 on_progress=lambda i, t: i % 50 == 0 and print(f"{i}/{t}", file=sys.stderr),
             )
             print(f"{n} history rows")
+        elif args.command == "import-history":
+            with make_http() as http:
+                done = import_seasons(
+                    http,
+                    store,
+                    seasons_between(args.first, args.last),
+                    cache_dir=args.cache_dir,
+                    refresh=args.refresh,
+                    on_season=lambda s, n: print(f"{s}: {n} rows", file=sys.stderr),
+                )
+            print(f"{len(done)} seasons, {sum(done.values())} player-fixture rows")
         elif args.command == "entry":
             n = sync_entry(client, store, args.entry_id)
             print(f"{n} gameweeks of picks")
