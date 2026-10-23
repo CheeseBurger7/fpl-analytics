@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -29,12 +30,21 @@ def build_parser() -> argparse.ArgumentParser:
     h.add_argument("--element", type=int, action="append", help="limit to these player ids")
 
     e = sub.add_parser("entry", help="pull a manager's picks, history and transfers")
-    e.add_argument("entry_id", type=int)
+    e.add_argument(
+        "entry_id",
+        type=int,
+        nargs="?",
+        default=int(os.environ["FPL_ENTRY_ID"]) if os.environ.get("FPL_ENTRY_ID") else None,
+        help="manager id (default: $FPL_ENTRY_ID)",
+    )
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "entry" and args.entry_id is None:
+        parser.error("entry_id required (pass it or set FPL_ENTRY_ID)")
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s"
     )
