@@ -28,6 +28,7 @@ pip install -e ".[dev]"
 
 fpl snapshot                    # freeze bootstrap-static + fixtures into DuckDB (+ Parquet)
 fpl history                     # per-fixture history for every player (~670 requests)
+fpl import-history              # past seasons 2016-17..2025-26 from vaastav/FPL (--from/--to/--refresh)
 fpl entry <your-entry-id>       # your picks, transfers and chips; or set FPL_ENTRY_ID
 ```
 Data lands in `data/processed/fpl.duckdb` (gitignored).

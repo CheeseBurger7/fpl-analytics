@@ -162,7 +162,86 @@ CREATE TABLE IF NOT EXISTS entry_transfers (
     element_out_cost INTEGER,
     PRIMARY KEY (entry_id, element_in, element_out, transferred_at)
 );
+
+-- Past seasons (vaastav/Fantasy-Premier-League). element_id and team_id are only stable within a
+-- season; ``code`` on hist_players is the cross-season player key.
+CREATE TABLE IF NOT EXISTS hist_teams (
+    season      VARCHAR NOT NULL,   -- e.g. '2023-24'
+    team_id     INTEGER NOT NULL,
+    name        VARCHAR,
+    PRIMARY KEY (season, team_id)
+);
+
+CREATE TABLE IF NOT EXISTS hist_players (
+    season      VARCHAR NOT NULL,
+    element_id  INTEGER NOT NULL,
+    code        INTEGER,
+    web_name    VARCHAR,
+    first_name  VARCHAR,
+    second_name VARCHAR,
+    team_id     INTEGER,
+    position    INTEGER,   -- element_type: 1 GKP, 2 DEF, 3 MID, 4 FWD
+    PRIMARY KEY (season, element_id)
+);
+
+-- One row per player per fixture (double gameweek = two rows). Columns that a season's CSV lacks
+-- (xG before 2022-23, starts before 2022-23, ...) are NULL; the full CSV row is kept in ``raw``.
+CREATE TABLE IF NOT EXISTS hist_player_gw (
+    season      VARCHAR NOT NULL,
+    element_id  INTEGER NOT NULL,
+    fixture_id  INTEGER NOT NULL,
+    round       INTEGER,
+    opponent_team INTEGER,
+    was_home    BOOLEAN,
+    kickoff_time TIMESTAMP,
+    team_h_score INTEGER,
+    team_a_score INTEGER,
+    minutes     INTEGER,
+    starts      INTEGER,
+    total_points INTEGER,
+    goals_scored INTEGER,
+    assists     INTEGER,
+    clean_sheets INTEGER,
+    goals_conceded INTEGER,
+    own_goals   INTEGER,
+    penalties_missed INTEGER,
+    penalties_saved INTEGER,
+    yellow_cards INTEGER,
+    red_cards   INTEGER,
+    saves       INTEGER,
+    bonus       INTEGER,
+    bps         INTEGER,
+    influence   DOUBLE,
+    creativity  DOUBLE,
+    threat      DOUBLE,
+    ict_index   DOUBLE,
+    expected_goals DOUBLE,
+    expected_assists DOUBLE,
+    expected_goal_involvements DOUBLE,
+    expected_goals_conceded DOUBLE,
+    xp          DOUBLE,   -- FPL's own expected points for that GW
+    value       INTEGER,  -- price, tenths of a million
+    selected    INTEGER,
+    transfers_in INTEGER,
+    transfers_out INTEGER,
+    transfers_balance INTEGER,
+    raw         JSON,
+    PRIMARY KEY (season, element_id, fixture_id)
+);
 """
+
+HIST_GW_COLUMNS = (
+    "season", "element_id", "fixture_id", "round", "opponent_team", "was_home", "kickoff_time",
+    "team_h_score", "team_a_score", "minutes", "starts", "total_points", "goals_scored", "assists",
+    "clean_sheets", "goals_conceded", "own_goals", "penalties_missed", "penalties_saved",
+    "yellow_cards", "red_cards", "saves", "bonus", "bps", "influence", "creativity", "threat",
+    "ict_index", "expected_goals", "expected_assists", "expected_goal_involvements",
+    "expected_goals_conceded", "xp", "value", "selected", "transfers_in", "transfers_out",
+    "transfers_balance", "raw",
+)  # fmt: skip
+
+
+_INSERT_BATCH = 500
 
 
 def _num(value: Any, cast: type = float) -> Any:
@@ -202,8 +281,13 @@ class Store:
         if not rows:
             return
         verb = "INSERT OR REPLACE" if replace else "INSERT"
-        marks = ",".join("?" * len(rows[0]))
-        self.con.executemany(f"{verb} INTO {table} VALUES ({marks})", list(rows))
+        group = "(" + ",".join("?" * len(rows[0])) + ")"
+        # executemany runs one statement per row, which is ~100x slower in DuckDB than batching
+        # rows into multi-row VALUES lists.
+        for i in range(0, len(rows), _INSERT_BATCH):
+            chunk = rows[i : i + _INSERT_BATCH]
+            params = [v for row in chunk for v in row]
+            self.con.execute(f"{verb} INTO {table} VALUES {','.join([group] * len(chunk))}", params)
 
     # -- snapshots ---------------------------------------------------------------------------
 
@@ -320,3 +404,28 @@ class Store:
             for t in transfers
         ]  # fmt: skip
         self._insert("entry_transfers", rows, replace=True)
+
+    # -- historical seasons ------------------------------------------------------------------
+
+    def replace_hist_season(
+        self,
+        season: str,
+        teams: Sequence[Sequence[Any]],
+        players: Sequence[Sequence[Any]],
+        gw_rows: Sequence[Sequence[Any]],
+    ) -> None:
+        """Swap in one season's rows atomically so a re-import never leaves a mix of versions.
+
+        Rows must match the column order of hist_teams / hist_players / HIST_GW_COLUMNS.
+        """
+        self.con.execute("BEGIN")
+        try:
+            for table in ("hist_teams", "hist_players", "hist_player_gw"):
+                self.con.execute(f"DELETE FROM {table} WHERE season = ?", [season])
+            self._insert("hist_teams", teams, replace=True)
+            self._insert("hist_players", players, replace=True)
+            self._insert("hist_player_gw", gw_rows, replace=True)
+            self.con.execute("COMMIT")
+        except BaseException:
+            self.con.execute("ROLLBACK")
+            raise
