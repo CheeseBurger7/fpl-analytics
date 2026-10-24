@@ -1,4 +1,4 @@
-"""Command line entry point: ``fpl snapshot | history | import-history | entry``."""
+"""Command line entry point: ``fpl snapshot | history | import-history | entry | backtest``."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from fpl.api import FPLClient
+from fpl.backtest import default_baselines, format_summary, load_dataset, run_backtest
 from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, seasons_between
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
 from fpl.store import Store
@@ -45,6 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=int(os.environ["FPL_ENTRY_ID"]) if os.environ.get("FPL_ENTRY_ID") else None,
         help="manager id (default: $FPL_ENTRY_ID)",
     )
+
+    b = sub.add_parser("backtest", help="walk-forward evaluation of baseline predictors")
+    b.add_argument("--season", action="append", help="season to evaluate (repeatable)")
+    b.add_argument("--step", type=int, default=1, help="gameweeks per refit (0 = per season)")
+    b.add_argument("--min-history", type=int, default=5, help="min prior fixtures to be scored")
+    b.add_argument("--by-season", action="store_true")
     return p
 
 
@@ -81,6 +88,15 @@ def main(argv: list[str] | None = None) -> int:
                     on_season=lambda s, n: print(f"{s}: {n} rows", file=sys.stderr),
                 )
             print(f"{len(done)} seasons, {sum(done.values())} player-fixture rows")
+        elif args.command == "backtest":
+            result = run_backtest(
+                load_dataset(store.con),
+                default_baselines(),
+                args.season or ["2023-24", "2024-25"],
+                step=args.step or None,
+                min_history=args.min_history,
+            )
+            print(format_summary(result.summary(by_season=args.by_season)))
         elif args.command == "entry":
             n = sync_entry(client, store, args.entry_id)
             print(f"{n} gameweeks of picks")
