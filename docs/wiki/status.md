@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-25, scorer built, GW8 pending)
+# Status (last updated: 2026-10-25, LightGBM added)
 
 ## Done
 | PR | What |
@@ -9,12 +9,14 @@
 | #4 | Walk-forward backtest harness + baseline predictors (`fpl.backtest`) |
 | #5 | MILP squad/lineup optimizer + captured-fraction metric (`fpl.optimizer`) |
 | #8 | Live adapter `fpl.live` + `fpl blind-pick`; GW8 2026-27 picks frozen |
+| #10 | `fpl blind-score` scorer |
+| (feat/lightgbm) | `fpl.model` LightGBM predictors; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
 
 ## Next: run the blind GW8 scorer
 Picks are frozen in `data/processed/blind_gw8.json` (rolling_mean_5 and fpl_ep; fresh squad and the
 user's own squad). The scorer (`fpl blind-score --gw 8`) is written and tested but uncommitted;
 it refuses until all GW8 fixtures are finished (all 10 were open on 2026-10-25).
-No trained model exists yet (LightGBM is under Later).
+LightGBM exists (`fpl.model`) but is not wired into `blind-pick` yet: live rows have `ep`, not `xp`.
 1. Commit the scorer on a branch, open a PR.
 2. Once GW8 is finished: `fpl snapshot`, `fpl history`, `fpl blind-score --gw 8`; record captured
    fraction per predictor (fresh and own squad) in the task log.
@@ -22,7 +24,8 @@ No trained model exists yet (LightGBM is under Later).
    a live track record. Take the snapshot before kickoffs this time (GW8's was taken late).
 
 ## Later
-- LightGBM predictor (optional extra); report with and without `xp` as a feature.
+- LightGBM follow-ups: tune; horizon 1-6 targets (needed by the planner); add `lgbm_xp` to
+  `blind-pick` using `ep`; lagged ICT / xG features.
 - Lagged ICT / xG / xA / xGI features (xG only from 2022-23).
 - Transfer planner (multi-GW, hits, chips), differentials, explorer.
 - Fix mid-season-mover team features (see data.md).
