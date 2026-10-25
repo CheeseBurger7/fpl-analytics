@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-25, branch feat/live-adapter)
+# Status (last updated: 2026-10-25, after PR #8)
 
 ## Done
 | PR | What |
@@ -8,11 +8,13 @@
 | #3 | Leakage-free per-fixture feature builder (`fpl.features`) |
 | #4 | Walk-forward backtest harness + baseline predictors (`fpl.backtest`) |
 | #5 | MILP squad/lineup optimizer + captured-fraction metric (`fpl.optimizer`) |
-| (open) | Live adapter `fpl.live` + `fpl blind-pick`; GW8 2026-27 picks frozen |
+| #8 | Live adapter `fpl.live` + `fpl blind-pick`; GW8 2026-27 picks frozen |
 
 ## Next: score the blind GW8 picks
 Picks are frozen in `data/processed/blind_gw8.json` (predictors rolling_mean_5 and fpl_ep; fresh
-squad and the user's own squad). Branch `feat/live-adapter` (not yet merged) holds the adapter.
+squad and the user's own squad). The adapter is merged (PR #8); start the scorer from `main`.
+No trained model exists yet: only rolling_mean_5 and fpl_ep
+(LightGBM is under Later). GW8 was still in progress on 2026-10-25, so wait for it to finish.
 1. Once GW8 is finished: `fpl snapshot` + `fpl history`, then read GW8 actuals from `element_history`.
 2. Add a scorer: `score_selection` of each frozen XI/captain on actual points, versus the hindsight
    ceiling (`optimize_squad` on actuals, same pool and budget). Report captured fraction per predictor.

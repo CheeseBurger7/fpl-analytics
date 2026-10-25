@@ -1,6 +1,6 @@
 # Task log (newest first)
 
-## 2026-10-25: Live-data adapter and frozen blind GW8 picks (branch feat/live-adapter)
+## 2026-10-25: Live-data adapter and frozen blind GW8 picks (PR #8)
 - Data: vaastav already has 2026-27 but only to GW6 (3,883 rows). Imported it, then ran
   `fpl snapshot` (snapshot 1, 669 players, 380 fixtures, taken 2026-10-25 02:43 with GW8 current)
   and `fpl history` (5,220 `element_history` rows, GW1-7) and `fpl entry` (8 GWs of picks).
@@ -14,6 +14,8 @@
 - Caveats: the snapshot was taken after GW8 kickoffs began, so it is not a pre-deadline freeze;
   only price, club, position and `ep_this` were read from it (not its running totals). No GW8
   actuals were looked at. `ep_this` equalled `ep_next` for every player spot-checked.
+- Frozen fpl_ep XI: Raya, Gabriel, Konsa, N.Jackson, Evanilson, De Cuyper, Vuskovic, Henderson,
+  Neto, Doku, Haaland (C Konsa). rolling_mean_5 captain is a defender (Vuskovic), worth a look.
 - Still to do: after GW8 finishes, `fpl history`, then score the frozen picks against the
   hindsight ceiling (not built yet).
 
