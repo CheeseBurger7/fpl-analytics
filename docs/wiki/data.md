@@ -9,8 +9,10 @@ DuckDB file `data/processed/fpl.duckdb` (gitignored). Do not commit anything und
   expected points).
 - Live (official API): `snapshots`, `player_snapshots`, `team_snapshots`, `event_snapshots`,
   `fixture_snapshots`, `element_history`, `entry_gameweeks`, `entry_picks`, `entry_transfers`.
-  **As of 2026-10-24 all live tables are empty locally.** Populate them with `fpl snapshot`,
-  `fpl history` and `fpl entry` (the entry id comes from env var `FPL_ENTRY_ID`).
+  As of 2026-10-25 they are populated (snapshot 1, `element_history` GW1-7+, entry picks).
+  Refresh with `fpl snapshot`, `fpl history` and `fpl entry` (entry id from env var `FPL_ENTRY_ID`).
+  Snapshot running totals (`minutes`, `total_points`...) include the current GW: never use them
+  as features. vaastav 2026-27 imported through GW6 only.
 
 ## Gotchas
 - `element_id` / `team_id` are only stable within a season; the cross-season key is `hist_players.code`.

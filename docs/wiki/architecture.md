@@ -11,7 +11,8 @@ All code is in `src/fpl/`; tests are in `tests/` (in-memory DuckDB, mocked HTTP,
 | `features.py` | `build_features(con)` returns a DuckDB relation, one row per `hist_player_gw` row; `FEATURE_COLUMNS` |
 | `backtest.py` | Walk-forward harness (below) |
 | `optimizer.py` | MILP squad/lineup selection via scipy `milp` (below) |
-| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest` (global `--db`, default `data/processed/fpl.duckdb`) |
+| `live.py` | Features for unplayed live-season fixtures (below) |
+| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick` (global `--db`, default `data/processed/fpl.duckdb`) |
 
 ## features.py
 Features for a row in gameweek G use only gameweeks strictly before G, so both fixtures of a DGW
@@ -48,6 +49,15 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
   `captured_fraction` (fresh squad per GW, same pool and budget, scored on actual points). Position
   and club come from `hist_players`, price from the player's last fixture that GW.
 - scipy is the optional extra `optimize` (also in `dev` so CI runs the tests).
+
+## live.py
+- `live_features(con, season, gw) -> Live`: shadows `hist_teams/players/player_gw` with TEMP
+  tables (main tables untouched), adds played fixtures missing from vaastav (from `element_history`,
+  scores from `fixture_snapshots`) and target-less rows for the gameweek's fixtures (price =
+  snapshot `now_cost`), then runs `feature_sql`. Adds `ep` (`ep_this` if the gameweek is the
+  snapshot's current one, else `ep_next`).
+- `predictions(live)`: rolling_mean_5 and fpl_ep on common players; `player_pool(con, live, pts)`.
+- `fpl blind-pick --gw N [--entry-id]` freezes predictions and picks to `data/processed/blind_gw<N>.json`.
 
 ## Commands
 ```
