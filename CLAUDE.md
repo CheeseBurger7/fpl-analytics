@@ -10,6 +10,5 @@ wiki" in that README) so the next session can pick up the work.
   in-memory DuckDB). Add dependencies to `pyproject.toml` optional extras only when needed.
 - Short-lived branches + PRs; the ruleset requires checks `test (3.11)` / `test (3.13)`.
   Do not commit or push unless asked. `gh` is at `C:\Program Files\GitHub CLI\gh.exe`.
-- Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
-  PR bodies do **not** get a "Generated with Claude Code" footer.
+- Do not add "Co-Authored-By" or "Generated with Claude Code" lines to commit messages or PR bodies.
 - Never commit the FPL entry id (user env var `FPL_ENTRY_ID`) or anything under `data/`.
