@@ -11,6 +11,7 @@ All code is in `src/fpl/`; tests are in `tests/` (in-memory DuckDB, mocked HTTP,
 | `features.py` | `build_features(con)` returns a DuckDB relation, one row per `hist_player_gw` row; `FEATURE_COLUMNS` |
 | `backtest.py` | Walk-forward harness (below) |
 | `optimizer.py` | MILP squad/lineup selection via scipy `milp` (below) |
+| `model.py` | `LightGBMPredictor` (`lgbm`, `lgbm_xp` via `model_predictors()`), extra `model`; `fpl backtest --model` |
 | `live.py` | Features for unplayed live-season fixtures (below) |
 | `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick`, `blind-score` (global `--db`, default `data/processed/fpl.duckdb`) |
 

@@ -1,5 +1,20 @@
 # Task log (newest first)
 
+## 2026-10-25: LightGBM predictor (branch feat/lightgbm)
+- Added `fpl.model.LightGBMPredictor` (per-fixture L2 regression on `FEATURE_COLUMNS`, optional
+  `xp`; 300 rounds, lr 0.05, 31 leaves, refit per backtest block) and `fpl backtest --model`
+  (adds `lgbm` and `lgbm_xp`). Extra `model` in pyproject (also in `dev`).
+- Backtest, one fit per season, vs baselines (MAE / Spearman / top-10 hit):
+  2023-24: fpl_xp 0.876/0.747/0.363, lgbm 0.991/0.678/0.145, lgbm_xp 0.730/0.747/0.516.
+  2024-25: fpl_xp 0.943/0.756/0.350, lgbm 1.058/0.692/0.195, lgbm_xp 0.759/0.765/0.545.
+  Captured fraction (ceiling 151.3): rolling_mean_5 0.371, fpl_xp 0.618 (93.2 pts), lgbm 0.404
+  (61.7), lgbm_xp 0.793 (119.9).
+- Reading: without `xp` the model only slightly beats rolling_mean_5; nearly all the gain comes from
+  `xp` (FPL's news-aware availability/fixture info) plus recalibration. Caveats: hyperparameters
+  untuned, single-fixture target (no horizon yet), xp missing before 2020-21 so those training
+  rows use NaN, live use needs `ep` as the stand-in for `xp` (not the same field).
+- Tests: `tests/test_model.py` (60 pass, ruff clean).
+
 ## 2026-10-25: Blind-pick scorer built, GW8 not yet scorable (branch not yet created)
 - Added `fpl.live.score_blind` and `fpl blind-score --gw N`: scores each frozen XI/captain
   (`score_selection`, no auto-subs) on `element_history` points for that round, against the

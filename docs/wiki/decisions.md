@@ -16,4 +16,6 @@
   fraction measures prediction quality, not season-long play.
 - **Training cutoff.** Training rows must kick off strictly before the evaluated block's first GW.
 - **Tooling.** Features in DuckDB SQL; metrics in plain Python (no numpy/pandas yet); scipy only
-  for the optimizer. Add heavier dependencies (LightGBM) as optional extras when needed.
+  for the optimizer. Add heavier dependencies as optional extras when needed. LightGBM (numpy) is the extra `model`.
+- **LightGBM target/loss.** Per-fixture points, L2 loss, summed per GW by the harness; always report
+  `lgbm` and `lgbm_xp` side by side because `xp` carries most of the gain.

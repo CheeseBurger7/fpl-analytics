@@ -14,7 +14,8 @@ dependencies = [
 
 [project.optional-dependencies]
 optimize = ["scipy>=1.11"]
-dev = ["pytest>=8", "ruff>=0.5", "scipy>=1.11"]
+model = ["lightgbm>=4"]
+dev = ["pytest>=8", "ruff>=0.5", "scipy>=1.11", "lightgbm>=4"]
 
 [project.scripts]
 fpl = "fpl.cli:main"

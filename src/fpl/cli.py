@@ -56,6 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--step", type=int, default=1, help="gameweeks per refit (0 = per season)")
     b.add_argument("--min-history", type=int, default=5, help="min prior fixtures to be scored")
     b.add_argument("--by-season", action="store_true")
+    b.add_argument("--model", action="store_true",
+                   help="add LightGBM predictors lgbm / lgbm_xp (needs lightgbm; slow)")
     b.add_argument("--captured", action="store_true",
                    help="add ILP captured-fraction metric (needs scipy; slow)")
 
@@ -69,6 +71,18 @@ def build_parser() -> argparse.ArgumentParser:
     bs.add_argument("--gw", type=int, required=True)
     bs.add_argument("--file", type=Path, default=None, help="default blind_gw<N>.json")
     return p
+
+
+def _model_predictors() -> list:
+    from fpl.model import model_predictors  # optional dependency
+
+    return model_predictors()
+
+
+def _model_predictors() -> list:
+    from fpl.model import model_predictors  # optional dependency
+
+    return model_predictors()
 
 
 def _names(names: dict[int, str], ids: tuple[int, ...]) -> str:
@@ -155,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "backtest":
             result = run_backtest(
                 load_dataset(store.con),
-                default_baselines(),
+                default_baselines() + (_model_predictors() if args.model else []),
                 args.season or ["2023-24", "2024-25"],
                 step=args.step or None,
                 min_history=args.min_history,
