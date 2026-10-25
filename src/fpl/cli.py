@@ -12,6 +12,7 @@ from fpl.api import FPLClient
 from fpl.backtest import default_baselines, format_summary, load_dataset, run_backtest
 from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, seasons_between
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
+from fpl.optimizer import CapturedFractionHook
 from fpl.store import Store
 
 DEFAULT_DB = Path("data/processed/fpl.duckdb")
@@ -52,6 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--step", type=int, default=1, help="gameweeks per refit (0 = per season)")
     b.add_argument("--min-history", type=int, default=5, help="min prior fixtures to be scored")
     b.add_argument("--by-season", action="store_true")
+    b.add_argument("--captured", action="store_true",
+                   help="add ILP captured-fraction metric (needs scipy; slow)")
     return p
 
 
@@ -95,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.season or ["2023-24", "2024-25"],
                 step=args.step or None,
                 min_history=args.min_history,
+                hooks=[CapturedFractionHook(store.con)] if args.captured else (),
             )
             print(format_summary(result.summary(by_season=args.by_season)))
         elif args.command == "entry":
