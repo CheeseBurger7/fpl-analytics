@@ -7,7 +7,7 @@
 | #2 | Historical import from the vaastav dataset (2016-17..2025-26) |
 | #3 | Leakage-free per-fixture feature builder (`fpl.features`) |
 | #4 | Walk-forward backtest harness + baseline predictors (`fpl.backtest`) |
-| #5 | MILP squad/lineup optimizer + captured-fraction metric (`fpl.optimizer`) | |
+| #5 | MILP squad/lineup optimizer + captured-fraction metric (`fpl.optimizer`) |
 
 ## Next: live-data adapter and a blind GW8 (2026-27) test
 Goal: with only data up to GW7 of 2026-27, predict and pick the best lineup for GW8 (GW8 was in
