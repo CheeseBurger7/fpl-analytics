@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import duckdb
 
 from fpl.features import FEATURE_COLUMNS, feature_sql
-from fpl.optimizer import Player
+from fpl.optimizer import Player, Selection, optimize_squad, pick_lineup, score_selection
 
 _SHADOWED = ("hist_player_gw", "hist_players", "hist_teams")
 
@@ -185,3 +185,60 @@ def player_pool(
         [live.snapshot_id],
     ).fetchall()
     return [Player(i, pos, team, cost, points[i]) for i, pos, team, cost in rows if i in points]
+
+
+def score_blind(con: duckdb.DuckDBPyConnection, frozen: dict) -> dict[str, dict]:
+    """Score frozen ``blind-pick`` output on actual points against the hindsight ceiling.
+
+    Per predictor: the fresh squad's achieved points vs ``optimize_squad`` on actuals over the same
+    pool and budget, and (if present) the user's own squad vs its best hindsight lineup. Scoring
+    is ``score_selection`` (no auto-subs). Raises if the gameweek is unfinished or incomplete.
+    """
+    gw, sid = frozen["gw"], frozen["snapshot_id"]
+    # Latest snapshot, not the frozen one: only it knows whether the fixtures have finished.
+    latest = _latest_snapshot(con)
+    unfinished, total = con.execute(
+        "SELECT COUNT(*) FILTER (WHERE NOT COALESCE(finished, false)), COUNT(*) "
+        "FROM fixture_snapshots WHERE snapshot_id = ? AND event = ?",
+        [latest, gw],
+    ).fetchone()
+    if not total or unfinished:
+        raise RuntimeError(f"GW{gw} not finished ({unfinished}/{total} fixtures open)")
+    actual: dict[int, float] = {}
+    n_rows = 0
+    for i, pts in con.execute(
+        "SELECT element_id, total_points FROM element_history WHERE round = ?", [gw]
+    ).fetchall():
+        actual[i] = actual.get(i, 0.0) + (pts or 0)
+        n_rows += 1
+    if not n_rows:
+        raise RuntimeError(f"no element_history rows for GW{gw}; run `fpl history`")
+    info = {
+        i: (pos, team, cost)
+        for i, pos, team, cost in con.execute(
+            "SELECT element_id, position, team_id, now_cost FROM player_snapshots "
+            "WHERE snapshot_id = ?", [sid]).fetchall()
+    }  # fmt: skip
+    out: dict[str, dict] = {}
+    for name, entry in frozen["predictors"].items():
+        # Same pool as the pick: players the predictor priced (blank players score 0).
+        pool = [Player(i, *info[i], actual.get(i, 0.0)) for i in map(int, entry["predicted"])]
+        res = {"fresh": _result(_as_selection(entry["fresh"]), optimize_squad(pool), actual)}
+        if "entry" in entry:
+            sel = _as_selection(entry["entry"])
+            have = {p.id for p in pool}
+            padded = pool + [Player(i, *info[i], actual.get(i, 0.0))
+                             for i in sel.squad if i not in have]  # fmt: skip
+            res["entry"] = _result(sel, pick_lineup(padded, sel.squad), actual)
+        out[name] = res
+    return out
+
+
+def _as_selection(d: dict) -> Selection:
+    return Selection(tuple(d["squad"]), tuple(d["xi"]), d["captain"], 0.0, d.get("cost", 0))
+
+
+def _result(sel: Selection, best: Selection, actual: dict[int, float]) -> dict:
+    achieved, ceiling = score_selection(sel, actual), score_selection(best, actual)
+    return {"achieved": achieved, "ceiling": ceiling, "captured_fraction": achieved / ceiling,
+            "captain_points": actual.get(sel.captain, 0.0)}  # fmt: skip

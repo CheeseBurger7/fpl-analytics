@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-25, after PR #8)
+# Status (last updated: 2026-10-25, scorer built, GW8 pending)
 
 ## Done
 | PR | What |
@@ -10,15 +10,16 @@
 | #5 | MILP squad/lineup optimizer + captured-fraction metric (`fpl.optimizer`) |
 | #8 | Live adapter `fpl.live` + `fpl blind-pick`; GW8 2026-27 picks frozen |
 
-## Next: score the blind GW8 picks
-Picks are frozen in `data/processed/blind_gw8.json` (predictors rolling_mean_5 and fpl_ep; fresh
-squad and the user's own squad). The adapter is merged (PR #8); start the scorer from `main`.
-No trained model exists yet: only rolling_mean_5 and fpl_ep
-(LightGBM is under Later). GW8 was still in progress on 2026-10-25, so wait for it to finish.
-1. Once GW8 is finished: `fpl snapshot` + `fpl history`, then read GW8 actuals from `element_history`.
-2. Add a scorer: `score_selection` of each frozen XI/captain on actual points, versus the hindsight
-   ceiling (`optimize_squad` on actuals, same pool and budget). Report captured fraction per predictor.
-3. Then repeat each GW (`fpl blind-pick --gw N`) to build a live track record.
+## Next: run the blind GW8 scorer
+Picks are frozen in `data/processed/blind_gw8.json` (rolling_mean_5 and fpl_ep; fresh squad and the
+user's own squad). The scorer (`fpl blind-score --gw 8`) is written and tested but uncommitted;
+it refuses until all GW8 fixtures are finished (all 10 were open on 2026-10-25).
+No trained model exists yet (LightGBM is under Later).
+1. Commit the scorer on a branch, open a PR.
+2. Once GW8 is finished: `fpl snapshot`, `fpl history`, `fpl blind-score --gw 8`; record captured
+   fraction per predictor (fresh and own squad) in the task log.
+3. Then repeat each GW (`fpl blind-pick --gw N` before the deadline, `blind-score` after) to build
+   a live track record. Take the snapshot before kickoffs this time (GW8's was taken late).
 
 ## Later
 - LightGBM predictor (optional extra); report with and without `xp` as a feature.

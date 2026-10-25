@@ -1,4 +1,4 @@
-"""Command line entry point: ``fpl snapshot|history|import-history|entry|backtest|blind-pick``."""
+"""Command line entry point: ``fpl snapshot|history|import-history|entry|backtest|blind-*``."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from fpl.api import FPLClient
 from fpl.backtest import default_baselines, format_summary, load_dataset, run_backtest
 from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, seasons_between
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
-from fpl.live import live_features, player_pool, predictions
+from fpl.live import live_features, player_pool, predictions, score_blind
 from fpl.optimizer import CapturedFractionHook, Player, optimize_squad, pick_lineup
 from fpl.store import Store
 
@@ -64,6 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
     bp.add_argument("--gw", type=int, required=True)
     bp.add_argument("--entry-id", type=int, default=None, help="also pick for this manager")
     bp.add_argument("--out", type=Path, default=None, help="default blind_gw<N>.json")
+
+    bs = sub.add_parser("blind-score", help="score a frozen blind-pick file")
+    bs.add_argument("--gw", type=int, required=True)
+    bs.add_argument("--file", type=Path, default=None, help="default blind_gw<N>.json")
     return p
 
 
@@ -163,6 +167,13 @@ def main(argv: list[str] | None = None) -> int:
             eid = args.entry_id or (int(env_id) if env_id else None)
             out = args.out or Path(f"data/processed/blind_gw{args.gw}.json")
             blind_pick(store, args.season, args.gw, eid, out)
+        elif args.command == "blind-score":
+            path = args.file or Path(f"data/processed/blind_gw{args.gw}.json")
+            frozen = json.loads(path.read_text(encoding="utf-8"))
+            for name, res in score_blind(store.con, frozen).items():
+                for who, r in res.items():
+                    print(f"{name:15s} {who:6s} {r['achieved']:6.1f} / {r['ceiling']:6.1f} "
+                          f"= {r['captured_fraction']:.3f}")
         elif args.command == "entry":
             n = sync_entry(client, store, args.entry_id)
             print(f"{n} gameweeks of picks")

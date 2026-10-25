@@ -12,7 +12,7 @@ All code is in `src/fpl/`; tests are in `tests/` (in-memory DuckDB, mocked HTTP,
 | `backtest.py` | Walk-forward harness (below) |
 | `optimizer.py` | MILP squad/lineup selection via scipy `milp` (below) |
 | `live.py` | Features for unplayed live-season fixtures (below) |
-| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick` (global `--db`, default `data/processed/fpl.duckdb`) |
+| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick`, `blind-score` (global `--db`, default `data/processed/fpl.duckdb`) |
 
 ## features.py
 Features for a row in gameweek G use only gameweeks strictly before G, so both fixtures of a DGW
@@ -58,6 +58,9 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
   snapshot's current one, else `ep_next`).
 - `predictions(live)`: rolling_mean_5 and fpl_ep on common players; `player_pool(con, live, pts)`.
 - `fpl blind-pick --gw N [--entry-id]` freezes predictions and picks to `data/processed/blind_gw<N>.json`.
+- `score_blind(con, frozen)` / `fpl blind-score --gw N`: achieved vs hindsight-ceiling points and
+  captured fraction per predictor (`fresh`, and `entry` if present); needs the GW finished in the
+  latest snapshot and its `element_history` rows.
 
 ## Commands
 ```

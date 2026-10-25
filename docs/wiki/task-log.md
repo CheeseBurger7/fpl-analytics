@@ -1,5 +1,16 @@
 # Task log (newest first)
 
+## 2026-10-25: Blind-pick scorer built, GW8 not yet scorable (branch not yet created)
+- Added `fpl.live.score_blind` and `fpl blind-score --gw N`: scores each frozen XI/captain
+  (`score_selection`, no auto-subs) on `element_history` points for that round, against the
+  hindsight ceiling (`optimize_squad` on actuals over the same pool and snapshot prices; for the
+  user's squad, best lineup via `pick_lineup`). Raises unless every fixture of the GW is `finished`
+  in the latest snapshot.
+- Refreshed data: snapshot 2 and `fpl history` (5,220 rows; GW8 rows partial). Snapshot 2 shows all
+  10 GW8 fixtures unfinished (last kickoff 2026-10-25 16:30), so the scorer correctly refuses.
+  No GW8 actuals were looked at; no GW8 result yet.
+- Tests: 2 new in `tests/test_live.py` (58 pass, ruff clean).
+
 ## 2026-10-25: Live-data adapter and frozen blind GW8 picks (PR #8)
 - Data: vaastav already has 2026-27 but only to GW6 (3,883 rows). Imported it, then ran
   `fpl snapshot` (snapshot 1, 669 players, 380 fixtures, taken 2026-10-25 02:43 with GW8 current)
