@@ -1,5 +1,56 @@
 # Task log (newest first)
 
+## NEXT TASK (not started; brief written 2026-10-26): backtest the transfer planner, then `ep` as `xp`
+Start from `main` on a new branch (e.g. `feat/planner-backtest`). Read `status.md`, `glossary.md`
+and the `planner.py` / `backtest.py` / `model.py` sections of `architecture.md` first.
+
+**Goal.** Find out whether `fpl.planner` makes better transfers than doing nothing, scored on actual
+points, before anyone trusts `fpl transfers`. Primary metric: total actual points over a season
+(or per-GW mean) of a squad managed by the planner versus baselines, hits included.
+
+**Part 1: planner backtest (new module, e.g. `fpl.planbacktest`, CLI `fpl backtest-planner`).**
+- Simulation: start each evaluated season from a fixed legal squad (e.g. `optimize_squad` on GW1
+  predictions at 100m, or the real GW1 squad from `entry_picks` for 2026-27). Each GW g: get
+  predicted points for GWs g..g+h-1, call `plan_transfers`/`best_plan`, apply the chosen transfers
+  (track bank and free transfers: 1 per GW, unused banked up to 5, spent ones consumed), then score
+  the post-transfer squad's best XI + captain on the actual GW g points with `score_selection`
+  (`pick_lineup` on actuals is NOT allowed for the score: choose the XI from predictions, score on
+  actuals), minus 4 per hit. Sale price = current price (known simplification).
+- Policies to compare on identical predictions: `hold` (never transfer), `planner` (best_plan,
+  margin 1.0), `planner_hits` (margin 0, max_transfers 3), and the hindsight ceiling
+  (`optimize_squad` on actuals each GW, fresh squad, for context only). Use `fpl_xp` and `lgbm_xp`
+  as predictors (they have `xp`; `lgbm` without xp is the weak variant).
+- Predictions for future GWs in the sim: the walk-forward dataset's feature rows for GW g+j are
+  built from results before g+j, i.e. they would include GW g..g+j-1 results the planner could not
+  know at GW g (leak). Decide and record in `decisions.md`: either horizon 1 only (no leak, start
+  here), or for j>0 reuse the GW g-based prediction of the player's next fixture(s) (persistence),
+  or compute features as-of g (needs a feature-builder cut-off argument). Prefer horizon 1 first,
+  then horizon 3-4 with persistence, and report both.
+- Season/time cost: `plan_transfers` is ~1-3 s per call; 38 GWs x a few policies is fine. Train
+  `lgbm_xp` once per season (`--step 0` style) as in the existing backtest, not per GW.
+- Real-squad replay (sanity check only, 2026-10: 8 GWs of `entry_picks`/`entry_transfers`): what
+  would the planner have done each GW versus what the user did, scored on actuals. Too short for
+  conclusions; do not use the entry id in committed files or the wiki.
+- Report: points per GW, total, hits taken, transfers per GW, for each policy, per season
+  (suggest 2023-24 and 2024-25). Put numbers in the task log; add the metric definitions to
+  `glossary.md`.
+
+**Part 2: can `ep` stand in for `xp` live?** The strong model (`lgbm_xp`, captured fraction 0.793)
+needs `xp`, but live rows only have FPL's `ep` (`ep_this` / `ep_next`; they equalled each other in
+every spot check, see Open questions). Check from data, not assumption: over 2026-10 live snapshots
+(`player_snapshots.ep_next` vs the later `element_history` actuals, and vs vaastav `xp` for the
+overlapping GWs 1-6 of 2026-27 if rows align by player/fixture), compare distribution, mean and
+correlation of `ep` against `xp` and against actual points. If close: add a `lgbm_xp` option to
+`horizon_predictions` / `fpl transfers` / `blind-pick` feeding `ep` as `xp` for the first GW only
+(later GWs have no `ep`; say how they are handled, e.g. NaN). If not: record why and what is needed
+(e.g. snapshot `ep_next` every GW to build our own `xp` history).
+
+**Done when.** Planner policies compared with numbers in the task log; decision on `ep` recorded;
+wiki (`status.md`, `architecture.md`, `decisions.md`, `glossary.md`, this log) updated in the same
+PR; tests for the simulation (bank/free-transfer bookkeeping, hit accounting, no use of actuals
+before scoring) with in-memory DuckDB and no live API calls; ruff clean. No Co-Authored-By or
+Generated-with lines; do not commit `data/` or the entry id.
+
 ## 2026-10-26: Transfer planner, GW8 blind score, glossary (branch feat/transfer-planner)
 - Added `fpl.planner` (`plan_transfers`, `best_plan`, `horizon_predictions`) and `fpl transfers
   --gw N` (flags: `--horizon 4 --free 1 --max-transfers 3 --discount 1.0 --predictor lgbm`).

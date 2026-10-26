@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-26, transfer planner added)
+# Status (last updated: 2026-10-26, PR #12 merged, next task briefed)
 
 ## Done
 | PR | What |
@@ -12,9 +12,10 @@
 | #10 | `fpl blind-score` scorer |
 | #10 | `fpl blind-score` scorer; GW8 scored (fresh fpl_ep 0.607, rolling_mean_5 0.324) |
 | #11 | `fpl.model` LightGBM; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
-| (feat/transfer-planner) | `fpl.planner` + `fpl transfers`, glossary |
+| #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
 
 ## Next: validate the planner and feed it better predictions
+Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
 1. Backtest the planner: replay past GWs from `entry_picks` (or a simulated squad), compare the
    planner's transfers with the real ones and with doing nothing, scored on actual points.
 2. Make `lgbm_xp` usable live: check whether `ep` can stand in for `xp` (distribution / calibration
