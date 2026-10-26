@@ -17,7 +17,7 @@
 
 ## Next: make the planner trustworthy, collect `ep`
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
-1. Log `ep` every GW: `fpl snapshot` before each deadline plus `fpl blind-pick --gw N --model`
+1. Log `ep` every GW (aggregate with `fpl blind-score --all`): `fpl snapshot` before each deadline plus `fpl blind-pick --gw N --model`
    (before kickoffs), `fpl blind-score --gw N` after, and `fpl transfers`. No `ep` history
    exists yet, so the `ep`-as-`xp` decision rests on one gameweek (GW8).
 2. Realism of the planner backtest: selling price, free transfers/chips, auto-subs, real-squad
