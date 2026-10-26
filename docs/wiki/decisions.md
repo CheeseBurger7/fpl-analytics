@@ -22,3 +22,13 @@
   Chips and later transfers are out of scope until the planner is backtested.
 - **LightGBM target/loss.** Per-fixture points, L2 loss, summed per GW by the harness; always report
   `lgbm` and `lgbm_xp` side by side because `xp` carries most of the gain.
+- **Zero-`xp` rounds are missing, not 0.** A round where every `xp` is 0 is NULL in the dataset
+  (vaastav gap). Rounds with no forecast are skipped in the planner backtest for all policies.
+- **Planner backtest design.** Policies share predictions; lineup chosen from predictions, scored on
+  actuals; hits and free transfers tracked; horizon 1 is the reference (no leak). Horizon > 1 uses
+  persistence (latest per-fixture prediction x known fixture count) because dataset rows of later
+  GWs contain results the planner could not know. Horizon 4 did not beat horizon 1. Compare
+  policies/predictors only; absolute points are optimistic (see task log caveats).
+- **`ep` stands in for `xp` live (provisional).** One-GW test (GW8): `lgbm_xp` fed `ep` captured
+  0.828 vs `fpl_ep` 0.566, so `fpl transfers` defaults to `lgbm_xp` and `blind-pick --model` records
+  it. Later horizon GWs have no `ep` and use persistence. Revisit once several GWs of `ep` exist.

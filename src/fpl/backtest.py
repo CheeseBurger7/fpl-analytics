@@ -86,12 +86,17 @@ class Dataset:
 
 
 def load_dataset(con: duckdb.DuckDBPyConnection) -> Dataset:
-    """Features + xp for every historical fixture row, in chronological order."""
+    """Features + xp for every historical fixture row, in chronological order.
+
+    vaastav stores a missing ``xp`` as 0 for a whole round (27 of 38 rounds in 2025-26), so a
+    round whose ``xp`` is 0 for everyone is treated as missing (NULL), not as a forecast of 0.
+    """
     rel = build_features(con)
     cols = ", ".join(f"f.{c}" for c in FEATURE_COLUMNS)
     sql = f"""
     WITH j AS (
-        SELECT f.season, f.round, f.kickoff_time, f.element_id, f.fixture_id, f.target, g.xp,
+        SELECT f.season, f.round, f.kickoff_time, f.element_id, f.fixture_id, f.target,
+               CASE WHEN MAX(g.xp) OVER (PARTITION BY f.season, f.round) > 0 THEN g.xp END AS xp,
                MIN(f.kickoff_time) OVER (PARTITION BY f.season, f.round) AS gw_start, {cols}
         FROM feat f JOIN hist_player_gw g USING (season, element_id, fixture_id)
         WHERE f.kickoff_time IS NOT NULL

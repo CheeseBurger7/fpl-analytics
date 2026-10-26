@@ -17,6 +17,10 @@ DuckDB file `data/processed/fpl.duckdb` (gitignored). Do not commit anything und
 ## Gotchas
 - `element_id` / `team_id` are only stable within a season; the cross-season key is `hist_players.code`.
 - DGW = two rows in the same round; blank = no row; 0-minute rows exist when the team played.
+- **`xp` missing = 0 for whole rounds** in vaastav (2025-26: 27 of 38 rounds; 2026-27: GW2, GW6;
+  also 2023-24 GW26, 2024-25 GW22/32/34, a few earlier). `load_dataset` turns an all-zero round into
+  NULL; raw `hist_player_gw.xp` still has the zeros. `xp` in GW1 is poor (corr with points 0.4).
+- Live `ep_next` exists only in snapshots (3 so far, all GW9); there is no per-GW `ep` history.
 - `expected_*` and `starts` exist only from 2022-23; `xp` from 2020-21; no xG before 2022-23.
 - No per-GW fixture difficulty in `hist_player_gw`.
 - 2019-20 `round` runs to 47 (COVID); always order GWs by earliest kickoff, not `round`.

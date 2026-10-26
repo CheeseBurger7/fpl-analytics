@@ -1,55 +1,68 @@
 # Task log (newest first)
 
-## NEXT TASK (not started; brief written 2026-10-26): backtest the transfer planner, then `ep` as `xp`
-Start from `main` on a new branch (e.g. `feat/planner-backtest`). Read `status.md`, `glossary.md`
-and the `planner.py` / `backtest.py` / `model.py` sections of `architecture.md` first.
+## NEXT TASK (not started; written 2026-10-26): make the planner trustworthy, collect `ep`
+Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` first. Candidates, in order:
+1. **Log `ep` every gameweek.** Run `fpl snapshot` before each deadline (and `blind-pick --model`,
+   `transfers`) so that `ep_next` history exists for the GW it forecasts; there is none today
+   (all 3 snapshots hold GW9's `ep_next`). With a few GWs, redo the `ep` vs `xp` check below.
+2. **Realism of the planner backtest.** Real selling price (half of the profit), real free
+   transfers/chips, auto-subs; replay the real squad from `entry_picks` for 2026-27 (not done yet;
+   8 GWs). Also check whether vaastav `xp` is recorded before the deadline (absolute points are
+   optimistic, see below).
+3. Horizon-aware targets (1-6 GWs) instead of persistence; tune LightGBM; chips.
 
-**Goal.** Find out whether `fpl.planner` makes better transfers than doing nothing, scored on actual
-points, before anyone trusts `fpl transfers`. Primary metric: total actual points over a season
-(or per-GW mean) of a squad managed by the planner versus baselines, hits included.
+## 2026-10-26: Planner backtest, `ep` as `xp`, zero-`xp` rounds (branch feat/planner-backtest)
+- **New** `fpl.planbacktest` + `fpl backtest-planner [--season S] [--predictor fpl_xp|lgbm_xp]
+  [--horizon H]`: one squad per policy through a season, start squad = `optimize_squad` on GW1
+  predictions at 100m, first GW no transfers, then 1 free transfer per GW (bank up to 5), 4 per
+  extra, sale price = current price, XI + captain chosen from predictions, scored on actuals
+  (`score_selection`, no auto-subs) minus hits. Policies: `hold`, `planner` (`best_plan` margin
+  1.0, max 3 transfers), `planner_hits` (margin 0). One fit per season (as in `backtest`).
+- **Data bug found and fixed.** vaastav stores a missing `xp` as 0 for a whole round (27 of 38
+  rounds in 2025-26; 2023-24 GW26; 2024-25 GW22/32/34; 2026-27 GW2/6). `load_dataset` now maps a
+  round whose `xp` is 0 for everyone to NULL. This changes earlier numbers: 2024-25 reference
+  table in `glossary.md` (fpl_xp 0.618 -> 0.664, lgbm_xp 0.793 -> 0.814). Planner seasons skip
+  rounds with no forecast (37 GWs in 2023-24, 35 in 2024-25), identically for all policies.
+- **Results, total actual points over the season (hit points / transfers in brackets), horizon 1:**
 
-**Part 1: planner backtest (new module, e.g. `fpl.planbacktest`, CLI `fpl backtest-planner`).**
-- Simulation: start each evaluated season from a fixed legal squad (e.g. `optimize_squad` on GW1
-  predictions at 100m, or the real GW1 squad from `entry_picks` for 2026-27). Each GW g: get
-  predicted points for GWs g..g+h-1, call `plan_transfers`/`best_plan`, apply the chosen transfers
-  (track bank and free transfers: 1 per GW, unused banked up to 5, spent ones consumed), then score
-  the post-transfer squad's best XI + captain on the actual GW g points with `score_selection`
-  (`pick_lineup` on actuals is NOT allowed for the score: choose the XI from predictions, score on
-  actuals), minus 4 per hit. Sale price = current price (known simplification).
-- Policies to compare on identical predictions: `hold` (never transfer), `planner` (best_plan,
-  margin 1.0), `planner_hits` (margin 0, max_transfers 3), and the hindsight ceiling
-  (`optimize_squad` on actuals each GW, fresh squad, for context only). Use `fpl_xp` and `lgbm_xp`
-  as predictors (they have `xp`; `lgbm` without xp is the weak variant).
-- Predictions for future GWs in the sim: the walk-forward dataset's feature rows for GW g+j are
-  built from results before g+j, i.e. they would include GW g..g+j-1 results the planner could not
-  know at GW g (leak). Decide and record in `decisions.md`: either horizon 1 only (no leak, start
-  here), or for j>0 reuse the GW g-based prediction of the player's next fixture(s) (persistence),
-  or compute features as-of g (needs a feature-builder cut-off argument). Prefer horizon 1 first,
-  then horizon 3-4 with persistence, and report both.
-- Season/time cost: `plan_transfers` is ~1-3 s per call; 38 GWs x a few policies is fine. Train
-  `lgbm_xp` once per season (`--step 0` style) as in the existing backtest, not per GW.
-- Real-squad replay (sanity check only, 2026-10: 8 GWs of `entry_picks`/`entry_transfers`): what
-  would the planner have done each GW versus what the user did, scored on actuals. Too short for
-  conclusions; do not use the entry id in committed files or the wiki.
-- Report: points per GW, total, hits taken, transfers per GW, for each policy, per season
-  (suggest 2023-24 and 2024-25). Put numbers in the task log; add the metric definitions to
-  `glossary.md`.
+  | season | predictor | hold | planner | planner_hits |
+  |---|---|---|---|---|
+  | 2023-24 (37 GWs, ceiling 5852) | fpl_xp | 1624 | 2786 (144/73) | 2824 (160/77) |
+  | | lgbm_xp | 1582 | 2992 (176/81) | 3068 (236/96) |
+  | 2024-25 (35 GWs, ceiling 5236) | fpl_xp | 1673 | 2579 (92/58) | 2550 (140/70) |
+  | | lgbm_xp | 958 | 2896 (156/74) | 2964 (220/90) |
 
-**Part 2: can `ep` stand in for `xp` live?** The strong model (`lgbm_xp`, captured fraction 0.793)
-needs `xp`, but live rows only have FPL's `ep` (`ep_this` / `ep_next`; they equalled each other in
-every spot check, see Open questions). Check from data, not assumption: over 2026-10 live snapshots
-(`player_snapshots.ep_next` vs the later `element_history` actuals, and vs vaastav `xp` for the
-overlapping GWs 1-6 of 2026-27 if rows align by player/fixture), compare distribution, mean and
-correlation of `ep` against `xp` and against actual points. If close: add a `lgbm_xp` option to
-`horizon_predictions` / `fpl transfers` / `blind-pick` feeding `ep` as `xp` for the first GW only
-(later GWs have no `ep`; say how they are handled, e.g. NaN). If not: record why and what is needed
-(e.g. snapshot `ep_next` every GW to build our own `xp` history).
-
-**Done when.** Planner policies compared with numbers in the task log; decision on `ep` recorded;
-wiki (`status.md`, `architecture.md`, `decisions.md`, `glossary.md`, this log) updated in the same
-PR; tests for the simulation (bank/free-transfer bookkeeping, hit accounting, no use of actuals
-before scoring) with in-memory DuckDB and no live API calls; ruff clean. No Co-Authored-By or
-Generated-with lines; do not commit `data/` or the entry id.
+  Horizon 4 (persistence beyond GW g): 2023-24 fpl_xp 1623 / 2765 (252/100) / 2755; lgbm_xp 1582 /
+  2952 (276/106) / 2952. 2024-25 fpl_xp 1673 / 2582 (240/95) / 2582; lgbm_xp 958 / 2913 (260/100)
+  / 2920 (264/101). Points per GW are totals / 35-37 (planner 70-85, hold 27-48).
+- **Reading.** The planner beats hold by 900-2000 points (net of hits) in every cell. `lgbm_xp` beats
+  `fpl_xp` as the planner's input by 206 (2023-24) and 317 (2024-25) points. `planner_hits`
+  (margin 0) vs `planner`: +38/-29 (fpl_xp), +76/+68 (lgbm_xp) at horizon 1, i.e. no reliable gain
+  from taking hits. Horizon 4 with persistence does not beat horizon 1 (-40..+17 for lgbm_xp,
+  +/-20 for fpl_xp) and makes 25-30 more transfers, so keep horizon 1 as the reference.
+- **Caveats (read before trusting absolute numbers).** 70-85 points/GW is above what real top
+  managers score, so the absolute level is optimistic: sale price = current price (no 50% profit
+  rule), unlimited fresh information at each deadline (vaastav `xp` is assumed pre-deadline,
+  unverified), fixture counts known, club = end-of-season club, no chips. `hold` is a weak
+  baseline (a GW1 squad never changed; lgbm_xp's 2024-25 start squad is poor, 958, because GW1
+  `xp` is unreliable: corr with points 0.40 vs 0.75 later). Compare policies and predictors with
+  each other, not with real FPL scores. No real-squad replay was done.
+- **`ep` as `xp` (Part 2).** No `ep` history exists (3 snapshots, all GW9's `ep_next`; vaastav
+  2026-27 stops at GW6), so `xp`-vs-`ep` could only be checked on GW8 using the frozen
+  `ep_this` (snapshot 1) against actuals: 662 players, mean ep 1.07 vs actual 1.40 (xp in 2026-27
+  GW3-5 averages 1.36-1.43), MAE 1.070, Pearson 0.56. Decision test: `lgbm_xp` fed `ep` as `xp`
+  for GW8 captured 120/145 = 0.828, vs `fpl_ep` 82 (0.566), `lgbm` 35 (0.241), rolling_mean_5 47
+  (0.324); MAE 0.939 vs 1.070, Spearman 0.742 vs 0.731. (`fpl_ep` is 82 here, 88 in the GW8 entry
+  below: same pool restriction as the other rows, re-optimised.) One gameweek only, but a large
+  gap, so `ep` is used as `xp` for the first GW. See `decisions.md`.
+- **Wired in:** `fpl transfers --predictor lgbm_xp` (now the default), `horizon_predictions(...,
+  "lgbm_xp")` (first GW `ep` as `xp`, later GWs persistence), `fpl blind-pick --model` (adds
+  `lgbm_xp(ep)`), `live.ep_model_predictions`. First live run: GW9-11, 3 transfers, predicted +27.7
+  over holding (predictions only).
+- Tests: 74 pass (new: `tests/test_planbacktest.py` for bank/free-transfer/hit bookkeeping,
+  scoring on actuals only, persistence, season inputs; zero-`xp` round; `ep_model_predictions`).
+  ruff clean. Each horizon-1 run takes ~45 s per season and predictor for fpl_xp (~10 min total
+  with lgbm_xp, both seasons).
 
 ## 2026-10-26: Transfer planner, GW8 blind score, glossary (branch feat/transfer-planner)
 - Added `fpl.planner` (`plan_transfers`, `best_plan`, `horizon_predictions`) and `fpl transfers

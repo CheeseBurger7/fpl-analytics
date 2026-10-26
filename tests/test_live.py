@@ -120,3 +120,16 @@ def test_score_blind_against_hindsight_ceiling():
 def test_score_blind_refuses_unfinished_gameweek():
     with _blind_store(False) as s, pytest.raises(RuntimeError, match="not finished"):
         score_blind(s.con, _frozen([1, 3, 4, 5, 6, 8, 9, 10, 11, 13, 14]))
+
+
+def test_ep_model_predictions_feeds_ep_as_xp_and_sums_fixtures():
+    from fpl.live import Live, ep_model_predictions
+
+    class FakeModel:
+        def predict_rows(self, rows):
+            return [r["xp"] * 2 for r in rows]  # only sees ep through the xp key
+
+    cols = ["element_id", "ep", "n_prior_fixtures"]
+    rows = [(1, 1.5, 9), (1, 2.0, 9), (2, None, 9), (3, 4.0, 2)]  # DGW; no ep; cold start
+    live = Live("s", 9, 1, 8, cols, rows)
+    assert ep_model_predictions(live, FakeModel()) == {1: 7.0}

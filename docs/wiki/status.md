@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-26, PR #12 merged, next task briefed)
+# Status (last updated: 2026-10-26, planner backtest done on branch feat/planner-backtest)
 
 ## Done
 | PR | What |
@@ -13,16 +13,16 @@
 | #10 | `fpl blind-score` scorer; GW8 scored (fresh fpl_ep 0.607, rolling_mean_5 0.324) |
 | #11 | `fpl.model` LightGBM; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
 | #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
+| (branch) | `fpl.planbacktest` + `fpl backtest-planner`; zero-`xp` rounds fixed; `ep` as `xp` for `lgbm_xp` live |
 
-## Next: validate the planner and feed it better predictions
+## Next: make the planner trustworthy, collect `ep`
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
-1. Backtest the planner: replay past GWs from `entry_picks` (or a simulated squad), compare the
-   planner's transfers with the real ones and with doing nothing, scored on actual points.
-2. Make `lgbm_xp` usable live: check whether `ep` can stand in for `xp` (distribution / calibration
-   vs `xp`), then use it in `blind-pick` and `transfers`. Without `xp`, `lgbm` is weak (0.404).
-3. Horizon-aware predictions (1-6 GW targets), tune LightGBM.
-4. Keep the live track record: `fpl blind-pick --gw N` before the deadline (snapshot before
-   kickoffs), `fpl blind-score --gw N` after. Also log `fpl transfers` output per GW.
+1. Log `ep` every GW: `fpl snapshot` before each deadline plus `fpl blind-pick --gw N --model`
+   (before kickoffs), `fpl blind-score --gw N` after, and `fpl transfers`. No `ep` history
+   exists yet, so the `ep`-as-`xp` decision rests on one gameweek (GW8).
+2. Realism of the planner backtest: selling price, free transfers/chips, auto-subs, real-squad
+   replay from `entry_picks`; verify `xp` timing (absolute backtest points are optimistic).
+3. Horizon-aware predictions (1-6 GW targets) instead of persistence; tune LightGBM.
 
 ## Later
 - Chips (wildcard, free hit, bench boost, triple captain), multi-step transfer plans, real
@@ -36,3 +36,5 @@ Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
 - vaastav has 2026-27 only to GW6 (checked 2026-10-25); how quickly does it catch up? The adapter
   covers the gap from `element_history`.
 - Is `ep_this` really per-GW? It equalled `ep_next` in every spot check.
+- Is vaastav `xp` recorded before the deadline? Backtested planner scores (70-85/GW) look too high.
+- Does `ep` as `xp` hold up beyond GW8? One gameweek: lgbm_xp(ep) 0.828 vs fpl_ep 0.566.

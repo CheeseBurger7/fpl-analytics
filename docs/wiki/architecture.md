@@ -13,8 +13,9 @@ All code is in `src/fpl/`; tests are in `tests/` (in-memory DuckDB, mocked HTTP,
 | `optimizer.py` | MILP squad/lineup selection via scipy `milp` (below) |
 | `model.py` | `LightGBMPredictor` (`lgbm`, `lgbm_xp` via `model_predictors()`), extra `model`; `fpl backtest --model` |
 | `planner.py` | Transfer planner (below) |
+| `planbacktest.py` | Season-long planner backtest (below) |
 | `live.py` | Features for unplayed live-season fixtures (below) |
-| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick`, `blind-score`, `transfers` (global `--db`, default `data/processed/fpl.duckdb`) |
+| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick`, `blind-score`, `transfers`, `backtest-planner` (global `--db`, default `data/processed/fpl.duckdb`) |
 
 ## features.py
 Features for a row in gameweek G use only gameweeks strictly before G, so both fixtures of a DGW
@@ -72,11 +73,25 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
 - `best_plan(plans, margin=1.0)`: fewest transfers within `margin` points of the best net.
 - `horizon_predictions(con, season, gw, horizon, predictor)`: `lgbm` (trained on all history),
   `rolling_mean_5` or `fpl_ep` per gameweek via `live_features`.
-- `fpl transfers --gw N` reads the squad/bank from `entry_picks` / `entry_gameweeks` (latest GW <= N).
+  `lgbm_xp` feeds `ep` as `xp` for the first GW (`live.ep_model_predictions`) and uses the first
+  GW's per-fixture prediction x fixture count for later GWs.
+- `fpl transfers --gw N` (default predictor `lgbm_xp`) reads the squad/bank from `entry_picks` / `entry_gameweeks` (latest GW <= N).
+
+## planbacktest.py
+- `simulate(gws, info, policy, horizon=1, discount=1.0, start=None) -> SeasonRun`: pure; `gws` is a
+  list of `GwInput(key, predicted, fixtures, price, actual)`, `info[id] = (position, team)`.
+  `Policy(name, max_transfers, margin)`; `HOLD`, `PLANNER`, `PLANNER_HITS`. Bookkeeping: bank and
+  free transfers (`next_free_transfers`, cap 5), hit = 4 per transfer beyond the free ones.
+  Lineups come from predictions; `actual` is used only in `score_selection`.
+- `horizon_points`: later GWs = latest per-fixture prediction x that GW's fixture count (no leak).
+- `season_inputs(data, predictors, season, con)`: fits each predictor once per season, shared
+  eligible pool, prices carried over blanks, rounds without any forecast skipped.
+  `ceiling_points` = hindsight fresh squad (context). CLI: `fpl backtest-planner`.
 
 ## Commands
 ```
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\python -m ruff check .
 fpl backtest --season 2024-25 --step 0 --by-season [--captured]   # --captured takes ~55s per season
+fpl backtest-planner [--season S] [--predictor fpl_xp|lgbm_xp] [--horizon 1]   # ~45s per season/predictor
 ```
