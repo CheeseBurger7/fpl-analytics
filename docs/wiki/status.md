@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-25, LightGBM added)
+# Status (last updated: 2026-10-26, transfer planner added)
 
 ## Done
 | PR | What |
@@ -10,24 +10,24 @@
 | #5 | MILP squad/lineup optimizer + captured-fraction metric (`fpl.optimizer`) |
 | #8 | Live adapter `fpl.live` + `fpl blind-pick`; GW8 2026-27 picks frozen |
 | #10 | `fpl blind-score` scorer |
-| (feat/lightgbm) | `fpl.model` LightGBM predictors; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
+| #10 | `fpl blind-score` scorer; GW8 scored (fresh fpl_ep 0.607, rolling_mean_5 0.324) |
+| #11 | `fpl.model` LightGBM; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
+| (feat/transfer-planner) | `fpl.planner` + `fpl transfers`, glossary |
 
-## Next: run the blind GW8 scorer
-Picks are frozen in `data/processed/blind_gw8.json` (rolling_mean_5 and fpl_ep; fresh squad and the
-user's own squad). The scorer (`fpl blind-score --gw 8`) is written and tested but uncommitted;
-it refuses until all GW8 fixtures are finished (all 10 were open on 2026-10-25).
-LightGBM exists (`fpl.model`) but is not wired into `blind-pick` yet: live rows have `ep`, not `xp`.
-1. Commit the scorer on a branch, open a PR.
-2. Once GW8 is finished: `fpl snapshot`, `fpl history`, `fpl blind-score --gw 8`; record captured
-   fraction per predictor (fresh and own squad) in the task log.
-3. Then repeat each GW (`fpl blind-pick --gw N` before the deadline, `blind-score` after) to build
-   a live track record. Take the snapshot before kickoffs this time (GW8's was taken late).
+## Next: validate the planner and feed it better predictions
+1. Backtest the planner: replay past GWs from `entry_picks` (or a simulated squad), compare the
+   planner's transfers with the real ones and with doing nothing, scored on actual points.
+2. Make `lgbm_xp` usable live: check whether `ep` can stand in for `xp` (distribution / calibration
+   vs `xp`), then use it in `blind-pick` and `transfers`. Without `xp`, `lgbm` is weak (0.404).
+3. Horizon-aware predictions (1-6 GW targets), tune LightGBM.
+4. Keep the live track record: `fpl blind-pick --gw N` before the deadline (snapshot before
+   kickoffs), `fpl blind-score --gw N` after. Also log `fpl transfers` output per GW.
 
 ## Later
-- LightGBM follow-ups: tune; horizon 1-6 targets (needed by the planner); add `lgbm_xp` to
-  `blind-pick` using `ep`; lagged ICT / xG features.
+- Chips (wildcard, free hit, bench boost, triple captain), multi-step transfer plans, real
+  selling prices, auto-subs in the planner.
 - Lagged ICT / xG / xA / xGI features (xG only from 2022-23).
-- Transfer planner (multi-GW, hits, chips), differentials, explorer.
+- Differentials, explorer.
 - Fix mid-season-mover team features (see data.md).
 
 ## Open questions

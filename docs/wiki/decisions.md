@@ -17,5 +17,8 @@
 - **Training cutoff.** Training rows must kick off strictly before the evaluated block's first GW.
 - **Tooling.** Features in DuckDB SQL; metrics in plain Python (no numpy/pandas yet); scipy only
   for the optimizer. Add heavier dependencies as optional extras when needed. LightGBM (numpy) is the extra `model`.
+- **Planner scope.** Transfers made now only, squad fixed over the horizon, hit subtracted after the
+  per-k solve, `best_plan` needs a 1-point margin per extra transfer (predictions are noisy).
+  Chips and later transfers are out of scope until the planner is backtested.
 - **LightGBM target/loss.** Per-fixture points, L2 loss, summed per GW by the harness; always report
   `lgbm` and `lgbm_xp` side by side because `xp` carries most of the gain.

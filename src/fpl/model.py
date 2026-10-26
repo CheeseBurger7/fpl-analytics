@@ -8,7 +8,7 @@ starts) are passed through as NaN for LightGBM to route.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -30,9 +30,13 @@ DEFAULT_PARAMS: dict = {
 }
 
 
+def _matrix(cols: Sequence[Sequence], n: int) -> np.ndarray:
+    arr = [[np.nan if v is None else float(v) for v in col] for col in cols]
+    return np.array(arr, dtype=float).T.reshape(n, len(cols))
+
+
 def feature_matrix(data: Dataset, idx: Sequence[int], columns: Sequence[str]) -> np.ndarray:
-    cols = [[np.nan if v is None else float(v) for v in data.column(c, idx)] for c in columns]
-    return np.array(cols, dtype=float).T.reshape(len(idx), len(columns))
+    return _matrix([data.column(c, idx) for c in columns], len(idx))
 
 
 @dataclass
@@ -61,6 +65,13 @@ class LightGBMPredictor:
         if self.model is None:
             raise RuntimeError("fit() first")
         return self.model.predict(feature_matrix(data, idx, self.columns)).tolist()
+
+    def predict_rows(self, rows: Sequence[Mapping[str, object]]) -> list[float]:
+        """Predict from feature dicts (e.g. ``Live.dicts()``); ``use_xp`` needs an ``xp`` key."""
+        if self.model is None:
+            raise RuntimeError("fit() first")
+        x = _matrix([[r[c] for r in rows] for c in self.columns], len(rows))
+        return self.model.predict(x).tolist()
 
 
 def model_predictors() -> list[LightGBMPredictor]:
