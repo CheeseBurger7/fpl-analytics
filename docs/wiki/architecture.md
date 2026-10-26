@@ -60,6 +60,8 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
   snapshot `now_cost`), then runs `feature_sql`. Adds `ep` (`ep_this` if the gameweek is the
   snapshot's current one, else `ep_next`).
 - `predictions(live)`: rolling_mean_5 and fpl_ep on common players; `player_pool(con, live, pts)`.
+- `fpl blind-score --all` scores every finished `blind_gw*.json` and prints mean captured
+  fraction per predictor (`live.mean_captured`); unfinished gameweeks are skipped.
 - `fpl blind-pick --gw N [--entry-id]` freezes predictions and picks to `data/processed/blind_gw<N>.json`.
 - `score_blind(con, frozen)` / `fpl blind-score --gw N`: achieved vs hindsight-ceiling points and
   captured fraction per predictor (`fresh`, and `entry` if present); needs the GW finished in the

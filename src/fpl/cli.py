@@ -13,13 +13,14 @@ from fpl.api import FPLClient
 from fpl.backtest import default_baselines, format_summary, load_dataset, run_backtest
 from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, seasons_between
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
-from fpl.live import live_features, player_pool, predictions, score_blind
+from fpl.live import live_features, mean_captured, player_pool, predictions, score_blind
 from fpl.optimizer import CapturedFractionHook, Player, optimize_squad, pick_lineup
 from fpl.planner import best_plan, horizon_predictions, plan_transfers
 from fpl.store import Store
 
 DEFAULT_DB = Path("data/processed/fpl.duckdb")
 DEFAULT_PARQUET = Path("data/processed/snapshots")
+DEFAULT_BLIND_DIR = Path("data/processed")
 LAST_COMPLETE_SEASON = "2025-26"
 CURRENT_SEASON = "2026-27"
 
@@ -71,7 +72,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="also freeze lgbm_xp fed FPL's ep as xp (needs lightgbm; ~15s to train)")
 
     bs = sub.add_parser("blind-score", help="score a frozen blind-pick file")
-    bs.add_argument("--gw", type=int, required=True)
+    bs.add_argument("--gw", type=int, help="one gameweek (default blind_gw<N>.json)")
+    bs.add_argument("--all", action="store_true",
+                    help="score every data/processed/blind_gw*.json that has finished, with means")
     bs.add_argument("--file", type=Path, default=None, help="default blind_gw<N>.json")
 
     t = sub.add_parser("transfers", help="best transfers before a gameweek over a horizon")
@@ -282,12 +285,29 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error("entry id required (--entry-id or FPL_ENTRY_ID)")
             suggest_transfers(store, args, eid)
         elif args.command == "blind-score":
-            path = args.file or Path(f"data/processed/blind_gw{args.gw}.json")
-            frozen = json.loads(path.read_text(encoding="utf-8"))
-            for name, res in score_blind(store.con, frozen).items():
-                for who, r in res.items():
-                    print(f"{name:15s} {who:6s} {r['achieved']:6.1f} / {r['ceiling']:6.1f} "
-                          f"= {r['captured_fraction']:.3f}")
+            if args.all == (args.gw is not None):
+                parser.error("pass exactly one of --gw N or --all")
+            files = (sorted(DEFAULT_BLIND_DIR.glob("blind_gw*.json"),
+                            key=lambda f: int(f.stem.removeprefix("blind_gw")))
+                     if args.all else [args.file or DEFAULT_BLIND_DIR / f"blind_gw{args.gw}.json"])
+            scored: dict[int, dict] = {}
+            for path in files:
+                frozen = json.loads(path.read_text(encoding="utf-8"))
+                try:
+                    scored[frozen["gw"]] = score_blind(store.con, frozen)
+                except RuntimeError as e:
+                    if not args.all:
+                        raise
+                    print(f"GW{frozen['gw']}: skipped ({e})")
+            for gw, res in scored.items():
+                for name, by_who in res.items():
+                    for who, r in by_who.items():
+                        print(f"GW{gw:<3d}{name:15s} {who:6s} {r['achieved']:6.1f} / "
+                              f"{r['ceiling']:6.1f} = {r['captured_fraction']:.3f}")
+            if len(scored) > 1:
+                print(f"-- mean over {len(scored)} gameweeks ({sorted(scored)})")
+                for (name, who), (mean, n) in mean_captured(scored).items():
+                    print(f"{name:15s} {who:6s} {mean:.3f} (n={n})")
         elif args.command == "entry":
             n = sync_entry(client, store, args.entry_id)
             print(f"{n} gameweeks of picks")

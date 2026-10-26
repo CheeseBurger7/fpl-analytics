@@ -59,7 +59,9 @@ Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` first. Candid
   "lgbm_xp")` (first GW `ep` as `xp`, later GWs persistence), `fpl blind-pick --model` (adds
   `lgbm_xp(ep)`), `live.ep_model_predictions`. First live run: GW9-11, 3 transfers, predicted +27.7
   over holding (predictions only).
-- Tests: 74 pass (new: `tests/test_planbacktest.py` for bank/free-transfer/hit bookkeeping,
+- Added `fpl blind-score --all` (multi-GW live track record; means per predictor/who). Use it
+  after each GW once `blind-pick --model` files exist (GW9 onwards are the clean pre-kickoff ones).
+- Tests: 75 pass (new: `tests/test_planbacktest.py` for bank/free-transfer/hit bookkeeping,
   scoring on actuals only, persistence, season inputs; zero-`xp` round; `ep_model_predictions`).
   ruff clean. Each horizon-1 run takes ~45 s per season and predictor for fpl_xp (~10 min total
   with lgbm_xp, both seasons).

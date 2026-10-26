@@ -133,3 +133,15 @@ def test_ep_model_predictions_feeds_ep_as_xp_and_sums_fixtures():
     rows = [(1, 1.5, 9), (1, 2.0, 9), (2, None, 9), (3, 4.0, 2)]  # DGW; no ep; cold start
     live = Live("s", 9, 1, 8, cols, rows)
     assert ep_model_predictions(live, FakeModel()) == {1: 7.0}
+
+
+def test_mean_captured_averages_per_predictor_and_who():
+    from fpl.live import mean_captured
+
+    def res(a, b):
+        return {"fpl_ep": {"fresh": {"captured_fraction": a}},
+                "lgbm": {"fresh": {"captured_fraction": b}, "entry": {"captured_fraction": b}}}
+
+    out = mean_captured({8: res(0.6, 0.8), 9: res(0.4, 0.6)})
+    assert out[("fpl_ep", "fresh")] == (pytest.approx(0.5), 2)
+    assert out[("lgbm", "entry")] == (pytest.approx(0.7), 2)

@@ -247,6 +247,20 @@ def score_blind(con: duckdb.DuckDBPyConnection, frozen: dict) -> dict[str, dict]
     return out
 
 
+def mean_captured(scored: dict[int, dict]) -> dict[tuple[str, str], tuple[float, int]]:
+    """Mean captured fraction and gameweek count per (predictor, ``fresh``/``entry``).
+
+    ``scored`` is ``{gw: score_blind(...)}``. Only ``fresh`` fractions are comparable across
+    predictors; ``entry`` ones share the user's squad, so compare them within a predictor pair.
+    """
+    acc: dict[tuple[str, str], list[float]] = {}
+    for res in scored.values():
+        for name, by_who in res.items():
+            for who, r in by_who.items():
+                acc.setdefault((name, who), []).append(r["captured_fraction"])
+    return {k: (sum(v) / len(v), len(v)) for k, v in acc.items()}
+
+
 def _as_selection(d: dict) -> Selection:
     return Selection(tuple(d["squad"]), tuple(d["xi"]), d["captain"], 0.0, d.get("cost", 0))
 
