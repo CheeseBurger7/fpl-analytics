@@ -175,6 +175,19 @@ def predictions(live: Live, *, min_history: int = 5) -> dict[str, dict[int, floa
     return out
 
 
+def ep_model_predictions(live: Live, model, *, min_history: int = 5) -> dict[int, float]:
+    """``lgbm_xp`` fed FPL's live ``ep`` in place of vaastav's ``xp`` (fixtures summed per player).
+
+    Rows without ``ep`` or enough history are skipped, as for ``fpl_ep``. ``model`` is a fitted
+    ``fpl.model.LightGBMPredictor`` with ``use_xp=True``.
+    """
+    rows = [r for r in live.dicts() if r["n_prior_fixtures"] >= min_history and r["ep"] is not None]
+    out: dict[int, float] = {}
+    for r, y in zip(rows, model.predict_rows([dict(r, xp=r["ep"]) for r in rows]), strict=True):
+        out[r["element_id"]] = out.get(r["element_id"], 0.0) + y
+    return out
+
+
 def player_pool(
     con: duckdb.DuckDBPyConnection, live: Live, points: dict[int, float]
 ) -> list[Player]:

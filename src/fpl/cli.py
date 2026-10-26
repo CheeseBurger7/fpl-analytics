@@ -67,6 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
     bp.add_argument("--gw", type=int, required=True)
     bp.add_argument("--entry-id", type=int, default=None, help="also pick for this manager")
     bp.add_argument("--out", type=Path, default=None, help="default blind_gw<N>.json")
+    bp.add_argument("--model", action="store_true",
+                    help="also freeze lgbm_xp fed FPL's ep as xp (needs lightgbm; ~15s to train)")
 
     bs = sub.add_parser("blind-score", help="score a frozen blind-pick file")
     bs.add_argument("--gw", type=int, required=True)
@@ -80,7 +82,16 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--free", type=int, default=1, help="free transfers available")
     t.add_argument("--max-transfers", type=int, default=3)
     t.add_argument("--discount", type=float, default=1.0, help="weight per later gameweek")
-    t.add_argument("--predictor", default="lgbm", choices=["lgbm", "rolling_mean_5", "fpl_ep"])
+    t.add_argument("--predictor", default="lgbm_xp",
+                   choices=["lgbm", "lgbm_xp", "rolling_mean_5", "fpl_ep"])
+
+    pb = sub.add_parser("backtest-planner", help="season-long transfer planner vs hold, on actuals")
+    pb.add_argument("--season", action="append", help="season to evaluate (repeatable)")
+    pb.add_argument("--predictor", action="append", choices=["fpl_xp", "lgbm_xp"],
+                    help="repeatable; default both")
+    pb.add_argument("--horizon", type=int, default=1, help="gameweeks to look ahead (1 = no leak)")
+    pb.add_argument("--discount", type=float, default=1.0)
+    pb.add_argument("--min-history", type=int, default=5)
     return p
 
 
@@ -90,10 +101,34 @@ def _model_predictors() -> list:
     return model_predictors()
 
 
-def _model_predictors() -> list:
-    from fpl.model import model_predictors  # optional dependency
+def planner_backtest(store: Store, args: argparse.Namespace) -> None:
+    from fpl.backtest import ColumnPredictor
+    from fpl.planbacktest import (
+        DEFAULT_POLICIES,
+        ceiling_points,
+        season_inputs,
+        simulate,
+        start_squad,
+        summarize,
+    )
 
-    return model_predictors()
+    wanted = args.predictor or ["fpl_xp", "lgbm_xp"]
+    preds = [ColumnPredictor("fpl_xp", "xp")] if "fpl_xp" in wanted else []
+    if "lgbm_xp" in wanted:
+        preds.append(_model_predictors()[1])
+    data = load_dataset(store.con)
+    for season in args.season or ["2023-24", "2024-25"]:
+        inputs, info = season_inputs(data, preds, season, store.con, min_history=args.min_history)
+        first = next(iter(inputs.values()))
+        ceiling = sum(ceiling_points(g, info) for g in first)
+        print(f"== {season}, horizon {args.horizon}: hindsight ceiling {ceiling:.0f} "
+              f"({ceiling / len(first):.1f}/GW, fresh squad each GW)")  # fmt: skip
+        for name, gws in inputs.items():
+            start = start_squad(gws[0], info)
+            runs = [simulate(gws, info, pol, horizon=args.horizon, discount=args.discount,
+                             start=start) for pol in DEFAULT_POLICIES]  # fmt: skip
+            print(f"-- predictor {name}")
+            print(format_summary(summarize(runs)), flush=True)
 
 
 def suggest_transfers(store: Store, args: argparse.Namespace, entry_id: int) -> None:
@@ -136,7 +171,9 @@ def _names(names: dict[int, str], ids: tuple[int, ...]) -> str:
     return ", ".join(names[i] for i in ids)
 
 
-def blind_pick(store: Store, season: str, gw: int, entry_id: int | None, out: Path) -> None:
+def blind_pick(
+    store: Store, season: str, gw: int, entry_id: int | None, out: Path, model: bool = False
+) -> None:
     live = live_features(store.con, season, gw)
     names = dict(store.con.execute(
         "SELECT element_id, web_name FROM player_snapshots WHERE snapshot_id = ?",
@@ -149,7 +186,15 @@ def blind_pick(store: Store, season: str, gw: int, entry_id: int | None, out: Pa
         ).fetchall()]
     result: dict = {"season": season, "gw": gw, "snapshot_id": live.snapshot_id,
                     "last_played": live.last_played, "predictors": {}}  # fmt: skip
-    for name, pred in predictions(live).items():
+    preds = predictions(live)
+    if model:
+        from fpl.live import ep_model_predictions
+
+        lgbm = _model_predictors()[1]  # lgbm_xp
+        data = load_dataset(store.con)
+        lgbm.fit(data, range(len(data)))
+        preds["lgbm_xp(ep)"] = ep_model_predictions(live, lgbm)
+    for name, pred in preds.items():
         pool = player_pool(store.con, live, pred)
         fresh = optimize_squad(pool)
         entry: dict = {"predicted": {str(i): v for i, v in pred.items()},
@@ -223,11 +268,13 @@ def main(argv: list[str] | None = None) -> int:
                 hooks=[CapturedFractionHook(store.con)] if args.captured else (),
             )
             print(format_summary(result.summary(by_season=args.by_season)))
+        elif args.command == "backtest-planner":
+            planner_backtest(store, args)
         elif args.command == "blind-pick":
             env_id = os.environ.get("FPL_ENTRY_ID")
             eid = args.entry_id or (int(env_id) if env_id else None)
             out = args.out or Path(f"data/processed/blind_gw{args.gw}.json")
-            blind_pick(store, args.season, args.gw, eid, out)
+            blind_pick(store, args.season, args.gw, eid, out, args.model)
         elif args.command == "transfers":
             env_id = os.environ.get("FPL_ENTRY_ID")
             eid = args.entry_id or (int(env_id) if env_id else None)

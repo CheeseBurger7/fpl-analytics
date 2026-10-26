@@ -147,6 +147,19 @@ def test_predictors_are_compared_on_common_player_gws(data):
     assert rows[("c", 1)].n_players == rows[("xp", 1)].n_players == 2
 
 
+def test_round_with_all_zero_xp_is_treated_as_missing_xp():
+    rows = [
+        _gw_row(S1, 10, 1, 1, "2022-08-06 14:00:00", pts=2, xp=0.0),
+        _gw_row(S1, 11, 1, 1, "2022-08-06 14:00:00", pts=6, xp=0.0),  # vaastav: xp missing as 0
+        _gw_row(S1, 10, 2, 2, "2022-08-13 14:00:00", pts=4, xp=0.0),
+        _gw_row(S1, 11, 2, 2, "2022-08-13 14:00:00", pts=2, xp=1.5),
+    ]
+    with Store() as s:
+        _load(s, S1, rows)
+        xp = load_dataset(s.con).columns["xp"]
+    assert xp == [None, None, 0.0, 1.5]  # a real 0 in a round with forecasts stays 0
+
+
 def test_features_never_see_the_target_for_baseline_predictions(data):
     # rolling mean for S1 GW3 player 10 is built from GW1-2 only: (2 + 4 + 1) / 3 fixtures
     res = run_backtest(data, [ColumnPredictor("r", "pts_per_fix_5")], [S1], step=None,

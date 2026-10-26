@@ -16,6 +16,7 @@ pass ``sell_prices`` if you know them.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -175,31 +176,43 @@ def horizon_predictions(
     """Predicted points per player for gameweeks ``gw .. gw+horizon-1`` (fixtures summed).
 
     ``predictor``: ``rolling_mean_5``, ``fpl_ep`` (FPL's ``ep``; only the first gameweek is a
-    true forecast, later ones reuse ``ep_next``) or ``lgbm`` (trained on every historical
-    fixture). Features of later gameweeks only see results up to ``gw-1`` and differ just by
-    fixture context. Gameweeks past the last scheduled one come back empty.
+    true forecast, later ones reuse ``ep_next``), ``lgbm`` (trained on every historical fixture)
+    or ``lgbm_xp`` (the same with ``xp`` as an input, fed ``ep`` for the first gameweek; later
+    gameweeks have no ``ep``, so they use the first gameweek's per-fixture prediction times the
+    fixtures the player has then, as in ``fpl.planbacktest``). Features of later gameweeks only
+    see results up to ``gw-1`` and differ just by fixture context. Gameweeks past the last
+    scheduled one come back empty.
     """
-    from fpl.live import live_features, predictions
+    from fpl.live import ep_model_predictions, live_features, predictions
 
     model = None
-    if predictor == "lgbm":
+    if predictor in ("lgbm", "lgbm_xp"):
         from fpl.backtest import load_dataset
         from fpl.model import LightGBMPredictor
 
-        model = LightGBMPredictor("lgbm")
+        model = LightGBMPredictor(predictor, use_xp=predictor == "lgbm_xp")
         data = load_dataset(con)
         model.fit(data, range(len(data)))
     elif predictor not in ("rolling_mean_5", "fpl_ep"):
         raise ValueError(f"unknown predictor {predictor!r}")
     out: list[dict[int, float]] = []
+    per_fixture: dict[int, float] = {}
     for g in range(gw, gw + horizon):
         live = live_features(con, season, g)
         if model is None:
             out.append(predictions(live, min_history=min_history)[predictor])
-            continue
-        rows = [r for r in live.dicts() if r["n_prior_fixtures"] >= min_history]
-        pred: dict[int, float] = {}
-        for r, y in zip(rows, model.predict_rows(rows), strict=True):
-            pred[r["element_id"]] = pred.get(r["element_id"], 0.0) + y
-        out.append(pred)
+        elif predictor == "lgbm_xp":
+            n_fix = Counter(r[0] for r in live.rows)  # element_id is the first column
+            if g == gw:
+                first = ep_model_predictions(live, model, min_history=min_history)
+                per_fixture = {i: v / n_fix[i] for i, v in first.items()}
+                out.append(first)
+            else:
+                out.append({i: v * n_fix.get(i, 0) for i, v in per_fixture.items()})
+        else:
+            rows = [r for r in live.dicts() if r["n_prior_fixtures"] >= min_history]
+            pred: dict[int, float] = {}
+            for r, y in zip(rows, model.predict_rows(rows), strict=True):
+                pred[r["element_id"]] = pred.get(r["element_id"], 0.0) + y
+            out.append(pred)
     return out
