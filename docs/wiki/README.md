@@ -11,6 +11,7 @@ Repo: github.com/CheeseBurger7/fpl-analytics (public, MIT). Local: `C:\Projects\
 | [status.md](status.md) | What exists, what is next, open questions. **Start here.** |
 | [architecture.md](architecture.md) | Modules, public functions, CLI, how data flows |
 | [data.md](data.md) | DuckDB tables, data gotchas, local data state |
+| [glossary.md](glossary.md) | Meaning of xp, ep, lgbm, MAE, Spearman, captured fraction; which metric to target |
 | [decisions.md](decisions.md) | Modelling and evaluation decisions, with reasons |
 | [task-log.md](task-log.md) | One entry per finished task / PR, newest first |
 

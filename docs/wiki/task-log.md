@@ -1,5 +1,26 @@
 # Task log (newest first)
 
+## 2026-10-26: Transfer planner, GW8 blind score, glossary (branch feat/transfer-planner)
+- Added `fpl.planner` (`plan_transfers`, `best_plan`, `horizon_predictions`) and `fpl transfers
+  --gw N` (flags: `--horizon 4 --free 1 --max-transfers 3 --discount 1.0 --predictor lgbm`).
+  One MILP per transfer count k: fixed post-transfer squad over the horizon, XI and captain per
+  GW, hit = 4 x (k - free) subtracted afterwards. `best_plan` takes the fewest transfers within
+  1.0 point of the top net. `LightGBMPredictor.predict_rows` predicts from live feature dicts;
+  `lgbm` for the planner is trained on all of `hist_player_gw` (about 12 s).
+- First live run (GW9, horizon 4, lgbm, 0.1m bank, 1 free): unchanged squad 194.2 predicted pts;
+  1 transfer (Gibbs-White -> Mbeumo) 199.9; 3 transfers 200.6 net of an 8-pt hit, so the planner
+  recommends the single transfer. Predictions only; no result to compare yet.
+- Caveats: not backtested (planned: replay past GWs against `entry_picks`); squad is fixed over the
+  horizon (no later transfers, chips, auto-subs); sale price = current price (real selling price is
+  lower after rises); later-GW features only see results to GW-1; `lgbm` here has no `xp`, the
+  weaker variant (captured fraction 0.404 vs 0.793 with xp); free transfers are a flag, not derived.
+- GW8 blind score (`fpl blind-score --gw 8`, picks frozen after GW8 kickoffs began, so not a clean
+  pre-deadline test). Fresh squad achieved/ceiling 145.0: rolling_mean_5 47.0 (0.324), fpl_ep 88.0
+  (0.607). The user's own squad, lineup choice only (ceiling = best XI from the same 15, 78.0):
+  rolling_mean_5 69.0 (0.885), fpl_ep 72.0 (0.923). The `entry` fractions are NOT comparable to
+  the `fresh` ones (different ceilings).
+- Added `glossary.md`. Tests: 66 pass, ruff clean.
+
 ## 2026-10-25: LightGBM predictor (branch feat/lightgbm)
 - Added `fpl.model.LightGBMPredictor` (per-fixture L2 regression on `FEATURE_COLUMNS`, optional
   `xp`; 300 rounds, lr 0.05, 31 leaves, refit per backtest block) and `fpl backtest --model`

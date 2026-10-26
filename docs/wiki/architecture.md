@@ -12,8 +12,9 @@ All code is in `src/fpl/`; tests are in `tests/` (in-memory DuckDB, mocked HTTP,
 | `backtest.py` | Walk-forward harness (below) |
 | `optimizer.py` | MILP squad/lineup selection via scipy `milp` (below) |
 | `model.py` | `LightGBMPredictor` (`lgbm`, `lgbm_xp` via `model_predictors()`), extra `model`; `fpl backtest --model` |
+| `planner.py` | Transfer planner (below) |
 | `live.py` | Features for unplayed live-season fixtures (below) |
-| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick`, `blind-score` (global `--db`, default `data/processed/fpl.duckdb`) |
+| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick`, `blind-score`, `transfers` (global `--db`, default `data/processed/fpl.duckdb`) |
 
 ## features.py
 Features for a row in gameweek G use only gameweeks strictly before G, so both fixtures of a DGW
@@ -62,6 +63,16 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
 - `score_blind(con, frozen)` / `fpl blind-score --gw N`: achieved vs hindsight-ceiling points and
   captured fraction per predictor (`fresh`, and `entry` if present); needs the GW finished in the
   latest snapshot and its `element_history` rows.
+
+## planner.py
+- `plan_transfers(players, points, squad, bank=, free_transfers=1, max_transfers=3, discount=1.0,
+  sell_prices=None) -> list[Plan]`: `points[g][id]` is predicted points in horizon gameweek g. One
+  MILP per transfer count k (fixed post-transfer squad, per-GW XI and captain, budget = bank + sale
+  value, 3-per-club, quotas); `Plan.net = gross - 4 * max(0, k - free)`.
+- `best_plan(plans, margin=1.0)`: fewest transfers within `margin` points of the best net.
+- `horizon_predictions(con, season, gw, horizon, predictor)`: `lgbm` (trained on all history),
+  `rolling_mean_5` or `fpl_ep` per gameweek via `live_features`.
+- `fpl transfers --gw N` reads the squad/bank from `entry_picks` / `entry_gameweeks` (latest GW <= N).
 
 ## Commands
 ```

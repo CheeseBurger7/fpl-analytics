@@ -15,6 +15,7 @@ from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, 
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
 from fpl.live import live_features, player_pool, predictions, score_blind
 from fpl.optimizer import CapturedFractionHook, Player, optimize_squad, pick_lineup
+from fpl.planner import best_plan, horizon_predictions, plan_transfers
 from fpl.store import Store
 
 DEFAULT_DB = Path("data/processed/fpl.duckdb")
@@ -70,6 +71,16 @@ def build_parser() -> argparse.ArgumentParser:
     bs = sub.add_parser("blind-score", help="score a frozen blind-pick file")
     bs.add_argument("--gw", type=int, required=True)
     bs.add_argument("--file", type=Path, default=None, help="default blind_gw<N>.json")
+
+    t = sub.add_parser("transfers", help="best transfers before a gameweek over a horizon")
+    t.add_argument("--season", default=CURRENT_SEASON)
+    t.add_argument("--gw", type=int, required=True, help="the gameweek about to start")
+    t.add_argument("--entry-id", type=int, default=None, help="default $FPL_ENTRY_ID")
+    t.add_argument("--horizon", type=int, default=4, help="gameweeks to look ahead")
+    t.add_argument("--free", type=int, default=1, help="free transfers available")
+    t.add_argument("--max-transfers", type=int, default=3)
+    t.add_argument("--discount", type=float, default=1.0, help="weight per later gameweek")
+    t.add_argument("--predictor", default="lgbm", choices=["lgbm", "rolling_mean_5", "fpl_ep"])
     return p
 
 
@@ -83,6 +94,42 @@ def _model_predictors() -> list:
     from fpl.model import model_predictors  # optional dependency
 
     return model_predictors()
+
+
+def suggest_transfers(store: Store, args: argparse.Namespace, entry_id: int) -> None:
+    con = store.con
+    (sid,) = con.execute("SELECT MAX(snapshot_id) FROM snapshots").fetchone()
+    (pick_gw,) = con.execute(
+        "SELECT MAX(gameweek) FROM entry_picks WHERE entry_id = ? AND gameweek <= ?",
+        [entry_id, args.gw],
+    ).fetchone()
+    if pick_gw is None:
+        raise SystemExit("no stored picks for this entry; run `fpl entry`")
+    squad = [r[0] for r in con.execute(
+        "SELECT element_id FROM entry_picks WHERE entry_id = ? AND gameweek = ?",
+        [entry_id, pick_gw]).fetchall()]  # fmt: skip
+    (bank,) = con.execute(
+        "SELECT bank FROM entry_gameweeks WHERE entry_id = ? AND gameweek = ?", [entry_id, pick_gw]
+    ).fetchone()
+    info = con.execute(
+        "SELECT element_id, web_name, position, team_id, now_cost FROM player_snapshots "
+        "WHERE snapshot_id = ?", [sid]).fetchall()  # fmt: skip
+    names = {r[0]: r[1] for r in info}
+    pool = [Player(i, pos, team, cost, 0.0) for i, _, pos, team, cost in info]
+    pts = horizon_predictions(con, args.season, args.gw, args.horizon, args.predictor)
+    plans = plan_transfers(
+        pool, pts, squad, bank=bank or 0, free_transfers=args.free,
+        max_transfers=args.max_transfers, discount=args.discount,
+    )  # fmt: skip
+    best = best_plan(plans)
+    print(f"squad from GW{pick_gw}, bank {(bank or 0) / 10:.1f}, {args.free} free, "
+          f"{args.predictor}, GW{args.gw}-{args.gw + args.horizon - 1}")  # fmt: skip
+    for p in plans:
+        mark = "  <-- best" if p is best else ""
+        print(f"{p.transfers} transfers: net {p.net:6.1f} (gross {p.gross:6.1f}, hit {p.hit}), "
+              f"out [{_names(names, p.out)}] in [{_names(names, p.into)}]{mark}")  # fmt: skip
+    print(f"{plans[0].net:.1f} for the unchanged squad; best gains {best.net - plans[0].net:+.1f}")
+    print(f"captain GW{args.gw}: {names[best.captain[0]]}")
 
 
 def _names(names: dict[int, str], ids: tuple[int, ...]) -> str:
@@ -181,6 +228,12 @@ def main(argv: list[str] | None = None) -> int:
             eid = args.entry_id or (int(env_id) if env_id else None)
             out = args.out or Path(f"data/processed/blind_gw{args.gw}.json")
             blind_pick(store, args.season, args.gw, eid, out)
+        elif args.command == "transfers":
+            env_id = os.environ.get("FPL_ENTRY_ID")
+            eid = args.entry_id or (int(env_id) if env_id else None)
+            if eid is None:
+                parser.error("entry id required (--entry-id or FPL_ENTRY_ID)")
+            suggest_transfers(store, args, eid)
         elif args.command == "blind-score":
             path = args.file or Path(f"data/processed/blind_gw{args.gw}.json")
             frozen = json.loads(path.read_text(encoding="utf-8"))
