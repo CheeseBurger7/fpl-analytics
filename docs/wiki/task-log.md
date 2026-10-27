@@ -1,12 +1,22 @@
 # Task log (newest first)
 
-## NEXT TASK (not started; written 2026-10-27): tune LightGBM
+## NEXT TASK (not started; written 2026-10-27): real-squad replay / `xp` timing
 Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` first.
-1. **Tune LightGBM** (`fpl.model.DEFAULT_PARAMS`, `n_rounds`): walk-forward over several seasons,
-   report captured fraction and MAE for `lgbm` and `lgbm_xp`; seasons differ by +-0.03, so do not
-   chase single-season gains (the ICT features were within that noise).
-2. Context: planner backtest totals are still optimistic (74-85 pts/GW); `xp` timing unverified.
-   Chores: after GW9, `fpl snapshot` + `fpl blind-score --gw 9` / `--all`; log `ep` each GW.
+1. Verify whether vaastav `xp` is recorded before the deadline (planner backtest 74-85 pts/GW is
+   optimistic); replay the real squad from `entry_picks` for 2026-27; real free-transfer/chip history.
+2. Chores: after GW9, `fpl snapshot` + `fpl blind-score --gw 9` / `--all`; log `ep` each GW.
+
+## 2026-10-27: LightGBM tuning sweep (branch feat/next-task): no change
+- Walk-forward, one fit per season, `fpl.model` defaults vs 7 variants, seasons 2022-23..2024-25,
+  mean captured fraction / MAE over the 3 seasons (lgbm | lgbm_xp):
+  base (lr .05, 300 rounds, 31 leaves, min_data 200, l2 10) 0.402 / 0.768, MAE 1.053 / 0.761;
+  lr .03 x 500 0.408 / 0.772; 150 rounds 0.409 / 0.776; 15 leaves x 400 0.408 / 0.778;
+  63 leaves, min_data 400 0.395 / 0.768; min_data 50 0.404 / 0.779; l2 50 0.398 / 0.778;
+  huber (alpha 3) 0.414 / 0.763, MAE 1.020 / 0.745.
+- All captured-fraction differences are <= 0.011, well inside the +-0.03 season noise, so
+  `DEFAULT_PARAMS` and `n_rounds` are unchanged. Huber lowers MAE (it fits the median-ish) but not
+  captured fraction. Script was a throwaway; rerun by editing `DEFAULT_PARAMS` and
+  `fpl backtest --model --captured --step 0 --season 2022-23 --season 2023-24 --season 2024-25`.
 
 ## 2026-10-27: Horizon-aware predictions (branch feat/next-task)
 - **New `fpl.horizon`**: `HorizonPredictor(h, use_xp)` predicts the points of a fixture h GWs after
