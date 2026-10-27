@@ -26,3 +26,6 @@ DuckDB file `data/processed/fpl.duckdb` (gitignored). Do not commit anything und
 - 2019-20 `round` runs to 47 (COVID); always order GWs by earliest kickoff, not `round`.
 - A player's team is end-of-season, so mid-season movers get wrong team-form features and a
   slightly wrong club in the optimizer's 3-per-club rule.
+
+- **vaastav `xp` timing:** appears recorded after the gameweek (a haul is already in `xp_g`). Use
+  `xp_prev` (previous known `xp`) when a leak-free forecast input is needed.

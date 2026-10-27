@@ -63,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--horizons", type=int, default=0, metavar="H",
                    help="with --model, add horizon models and persistence for h = 1..H "
                         "(use --step 0: models are fit once per season)")
+    b.add_argument("--lag-xp", action="store_true",
+                   help="add fpl_xp_prev / lgbm_xp_prev: last gameweek's xp (xp itself leaks)")
     b.add_argument("--captured", action="store_true",
                    help="add ILP captured-fraction metric (needs scipy; slow)")
 
@@ -111,9 +113,17 @@ def _model_predictors() -> list:
 
 def _backtest_predictors(args: argparse.Namespace) -> list:
     preds = default_baselines()
+    if args.lag_xp:
+        from fpl.backtest import ColumnPredictor
+
+        preds.append(ColumnPredictor("fpl_xp_prev", "xp_prev"))
     if args.model:
         models = _model_predictors()
         preds += models
+        if args.lag_xp:
+            from fpl.model import LightGBMPredictor
+
+            preds.append(LightGBMPredictor("lgbm_xp_prev", use_xp=True, xp_column="xp_prev"))
         if args.horizons:
             from fpl.horizon import HorizonPredictor, PersistencePredictor
 

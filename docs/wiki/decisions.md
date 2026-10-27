@@ -37,3 +37,6 @@
   planner keeps persistence by default.
 - **LightGBM defaults kept.** A 7-variant sweep (rate, rounds, leaves, min_data, l2, huber) moved
   captured fraction by <= 0.011 on 2022-25; not distinguishable from noise.
+- **`xp` is suspect; `xp_prev` is the leak-free check.** vaastav `xp` of a gameweek appears to include
+  that gameweek's result (haul test, task log 2026-10-27). Report `lgbm` and `lgbm_xp` (and `xp_prev`
+  variants via `--lag-xp`) together; never quote `lgbm_xp` / planner totals as realistic.
