@@ -8,9 +8,9 @@ History is keyed on ``hist_players.code`` so form carries across seasons; gamewe
 their earliest kickoff because 2019-20 ``round`` runs to 47. Windows count fixtures played (not
 calendar gameweeks), so a blank or a long injury stretches the window instead of adding nulls.
 
-Features are grouped by expected importance, most important first. ICT, xG and FPL's ``xp`` are
-deliberately left out for now (xG only exists from 2022-23); they slot in as further lagged
-columns in ``_PLAYER_ROLLS``.
+Features are grouped by expected importance, most important first. FPL's influence / creativity /
+threat (available since 2016-17) enter as lagged per-fixture means. xG and FPL's ``xp`` are left
+out of the feature set (xG only exists from 2022-23; ``xp`` is added by the model).
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ import duckdb
 # least one fixture, ordered by kickoff.
 FORM_WINDOWS = (3, 5, 10)
 TEAM_WINDOW = 6
+ICT_WINDOWS = (5, 10)
 
 # Tier 1 availability | tier 2 recent output | tier 3 player quality/price | tier 4 fixture context
 FEATURE_COLUMNS: tuple[str, ...] = (
@@ -31,6 +32,8 @@ FEATURE_COLUMNS: tuple[str, ...] = (
     # 2. Recent output.
     "pts_per_fix_3", "pts_per_fix_5", "pts_per_fix_10",
     "pts_per_fix_career", "pts_per_60_10",
+    # 2b. FPL's ICT components: underlying involvement that points lag behind.
+    "influence_5", "influence_10", "creativity_5", "creativity_10", "threat_5", "threat_10",
     # 3. Player quality / market.
     "position", "price", "price_change_5",
     # 4. Fixture context.
@@ -60,10 +63,13 @@ def feature_sql() -> str:
     t = "PARTITION BY team_name ORDER BY gw_start"
     form = [f"{_ratio('pts', 'fix', n, p)} AS pts_per_fix_{n}" for n in FORM_WINDOWS]
     mins = [f"{_ratio('mins', 'fix', n, p)} AS mins_per_fix_{n}" for n in FORM_WINDOWS]
+    ict = [f"{_ratio(c, 'fix', n, p)} AS {c}_{n}"
+           for c in ("influence", "creativity", "threat") for n in ICT_WINDOWS]
     return f"""
 WITH base AS (
     SELECT g.season, g.element_id, g.fixture_id, g.round, g.was_home, g.kickoff_time,
-           g.opponent_team, g.total_points, g.minutes, g.value, g.team_h_score, g.team_a_score,
+           g.opponent_team, g.total_points, g.minutes, g.value,
+           g.influence, g.creativity, g.threat, g.team_h_score, g.team_a_score,
            p.code, p.position, p.team_id, tm.name AS team_name, ot.name AS opp_name,
            COALESCE(g.starts, (g.minutes >= 60)::INT) AS started,
            MIN(g.kickoff_time) OVER (PARTITION BY g.season, g.round) AS gw_start
@@ -76,7 +82,8 @@ WITH base AS (
 player_gw AS (
     SELECT season, round, code, ANY_VALUE(gw_start) AS gw_start,
            COUNT(*) AS fix, SUM(total_points) AS pts, SUM(minutes) AS mins,
-           SUM(started) AS starts, SUM((minutes = 0)::INT) AS zero_min,
+           SUM(influence) AS influence, SUM(creativity) AS creativity,
+           SUM(threat) AS threat, SUM(started) AS starts, SUM((minutes = 0)::INT) AS zero_min,
            SUM(CASE WHEN minutes > 0 THEN minutes ELSE 0 END) AS played_mins,
            ARG_MAX(value, kickoff_time) AS price
     FROM base GROUP BY season, round, code
@@ -87,6 +94,7 @@ player_roll AS (
            {_ratio("starts", "fix", 5, p)} AS start_rate_5,
            {_ratio("zero_min", "fix", 5, p)} AS zero_min_rate_5,
            {", ".join(form)},
+           {", ".join(ict)},
            {_ratio("pts", "fix", None, p)} AS pts_per_fix_career,
            {_ratio("pts", "played_mins", 10, p)} * 60 AS pts_per_60_10,
            LAG(price, 1) OVER ({p}) - LAG(price, 6) OVER ({p}) AS price_change_5,
@@ -117,6 +125,8 @@ SELECT b.season, b.element_id, b.fixture_id, b.round, b.kickoff_time,
        pr.start_rate_5, pr.zero_min_rate_5,
        pr.pts_per_fix_3, pr.pts_per_fix_5, pr.pts_per_fix_10,
        pr.pts_per_fix_career, pr.pts_per_60_10,
+       pr.influence_5, pr.influence_10, pr.creativity_5, pr.creativity_10,
+       pr.threat_5, pr.threat_10,
        b.position,
        b.value AS price,  -- price at this fixture (set before the deadline)
        pr.price_change_5,

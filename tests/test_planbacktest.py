@@ -11,9 +11,11 @@ from fpl.planbacktest import (
     PLANNER,
     GwInput,
     Policy,
+    autosub_points,
     horizon_points,
     next_free_transfers,
     season_inputs,
+    selling_price,
     simulate,
     start_squad,
 )
@@ -132,3 +134,47 @@ def test_season_inputs_builds_gameweeks_from_walk_forward_data(store):
     assert gws[1].price[1] == 52 and gws[0].price[1] == 51
     cold, _ = season_inputs(_dataset(n_prior=2), [ColumnPredictor("fpl_xp", "xp")], "s", store.con)
     assert cold["fpl_xp"] == []  # cold starts are masked; rounds without a forecast are skipped
+
+
+def test_selling_price_keeps_half_of_a_rise_rounded_down():
+    assert selling_price(50, 50) == 50
+    assert selling_price(50, 53) == 51  # +3 -> +1
+    assert selling_price(50, 54) == 52
+    assert selling_price(50, 47) == 47  # falls are lost in full
+
+
+def test_sell_price_limits_what_a_sale_funds():
+    gws = [_gw(1, {}), _gw(2, {16: 9.0})]
+    g2 = gws[1]
+    gws[1] = GwInput(g2.key, g2.predicted, g2.fixtures, PRICE | {1: 60, 16: 60}, g2.actual)
+    sel, bank = start_squad(gws[0], INFO)
+    run = simulate(gws, INFO, Policy("p", max_transfers=1, margin=0.0), start=(sel, 0))
+    # player 1 rose 50 -> 60 but only 55 is banked: selling him cannot fund a 60 midfielder
+    assert 16 not in run.results[1].into or 1 not in run.results[1].out
+
+
+def test_autosubs_replace_non_playing_starter_and_respect_formation():
+    pos = {1: 1, 2: 1, 3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 3, 9: 3, 10: 4, 11: 4, 12: 3, 13: 2}
+    info = {i: (p, i) for i, p in pos.items()}
+    xi = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    bench = [2, 13]
+    actual = {i: 2.0 for i in pos} | {13: 5.0, 2: 3.0, 11: 0.0, 10: 6.0}
+    pred = {i: float(i) for i in pos}
+    mins = {i: 90 for i in pos} | {11: 0}
+    # forward 11 did not play; the bench defender comes on (4 DEF, 4 MID, 1 FWD is legal)
+    pts = autosub_points(xi, 10, bench, info, pred, actual, mins)
+    assert pts == pytest.approx(sum(actual[i] for i in xi if i != 11) + 5.0 + 6.0)
+    # captain 10 absent: 13 subs in and, highest predicted among those who played, is vice
+    mins2 = dict(mins) | {10: 0, 11: 90}
+    pts2 = autosub_points(xi, 10, bench, info, pred, actual, mins2)
+    assert pts2 == pytest.approx(sum(actual[i] for i in xi if i != 10) + 5.0 + 5.0)
+
+
+def test_goalkeeper_only_replaced_by_goalkeeper():
+    pos = {1: 1, 2: 1, 3: 2, 4: 2, 5: 2, 6: 3, 7: 3, 8: 3, 9: 3, 10: 4, 11: 4, 12: 2}
+    info = {i: (p, i) for i, p in pos.items()}
+    xi, bench = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], [2]
+    actual = {i: 1.0 for i in pos} | {2: 4.0, 1: 0.0}
+    mins = {i: 90 for i in pos} | {1: 0}
+    pts = autosub_points(xi, 10, bench, info, {i: 1.0 for i in pos}, actual, mins)
+    assert pts == pytest.approx(10 * 1.0 + 4.0 + 1.0)

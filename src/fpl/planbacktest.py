@@ -3,7 +3,8 @@
 Each policy manages one squad through a season. Before gameweek g it sees only predictions made
 from results before g (the walk-forward dataset's rows for g), asks ``plan_transfers`` for the best
 plan over ``horizon`` gameweeks, applies it, picks the XI and captain *from predictions*, and is
-scored on the actual gameweek points minus 4 per hit. No auto-subs; sale price = current price.
+scored on the actual gameweek points minus 4 per hit. Sale price = FPL selling price (half of any
+rise); auto-subs and vice-captain are applied when the gameweek's minutes are known.
 
 Future gameweeks (horizon > 1) cannot use the dataset's rows for g+j: their features include
 results of g..g+j-1. Instead a player's predicted points for g+j are his latest per-fixture
@@ -15,7 +16,7 @@ persistence. ``horizon=1`` needs no such assumption.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -24,6 +25,8 @@ import duckdb
 from fpl.backtest import Dataset, GwKey, Predictor, walk_forward_splits
 from fpl.optimizer import (
     BUDGET,
+    GK,
+    XI_BOUNDS,
     Player,
     Selection,
     optimize_squad,
@@ -56,6 +59,7 @@ class GwInput:
     fixtures: Mapping[int, int]  # fixtures per player this GW (schedule; absent = blank)
     price: Mapping[int, int]  # tenths, carried forward over blanks
     actual: Mapping[int, float]
+    minutes: Mapping[int, int] | None = None  # played minutes; None = no auto-subs
 
 
 @dataclass(frozen=True)
@@ -91,6 +95,56 @@ class SeasonRun:
 def next_free_transfers(free: int, used: int) -> int:
     """Free transfers for the next gameweek: unused ones bank (up to 5) plus one new."""
     return min(MAX_FREE_TRANSFERS, max(0, free - used) + 1)
+
+
+def selling_price(buy: int, now: int) -> int:
+    """FPL selling price (tenths): a rise is kept at half, rounded down; a fall is lost in full."""
+    return now if now <= buy else buy + (now - buy) // 2
+
+
+def autosub_points(
+    xi: Sequence[int],
+    captain: int,
+    bench: Sequence[int],
+    info: Mapping[int, tuple[int, int]],
+    predicted: Mapping[int, float],
+    actual: Mapping[int, float],
+    minutes: Mapping[int, int],
+) -> float:
+    """XI + captain points after FPL's automatic substitutions.
+
+    A starter with no minutes is replaced by the first legal bench player who played: the bench
+    goalkeeper only for the goalkeeper, outfield bench players in order of predicted points, and
+    only if the formation stays legal. If the captain did not play, the vice-captain (the starter
+    with the highest prediction who played) takes the armband. Blanks have no ``minutes`` entry.
+    """
+    played = {i for i in set(xi) | set(bench) if minutes.get(i, 0) > 0}
+    final = list(xi)
+    counts = Counter(info[i][0] for i in final)
+    bench_gk = [i for i in bench if info[i][0] == GK]
+    bench_out = sorted((i for i in bench if info[i][0] != GK), key=lambda i: -predicted.get(i, 0.0))
+    for i in list(xi):
+        if i in played:
+            continue
+        pos = info[i][0]
+        pool = bench_gk if pos == GK else bench_out
+        for b in pool:
+            if b not in played:
+                continue
+            bp = info[b][0]
+            new = counts.copy()
+            new[pos] -= 1
+            new[bp] += 1
+            if all(XI_BOUNDS[q][0] <= new[q] <= XI_BOUNDS[q][1] for q in XI_BOUNDS):
+                final[final.index(i)] = b
+                counts = new
+                pool.remove(b)
+                break
+    total = sum(actual.get(i, 0.0) for i in final if i in played)
+    if captain not in played:
+        alt = [i for i in final if i in played]
+        captain = max(alt, key=lambda i: predicted.get(i, 0.0), default=None)
+    return total + (actual.get(captain, 0.0) if captain is not None else 0.0)
 
 
 def _players(
@@ -131,6 +185,7 @@ def simulate(
     """
     squad_sel, bank = start or start_squad(gws[0], info)
     squad = set(squad_sel.squad)
+    buy = {i: gws[0].price[i] for i in squad}  # purchase prices, for the selling price
     free = 1
     per_fixture: dict[int, float] = {}
     run = SeasonRun(policy.name)
@@ -143,11 +198,20 @@ def simulate(
         pool = _players(pool_ids, info, gw.price)
         pts = horizon_points(gws, i, horizon, per_fixture)
         k_max = policy.max_transfers if i else 0
+        sell = {i: selling_price(buy[i], gw.price[i]) for i in squad}
         plans = plan_transfers(pool, pts, squad, bank=bank, free_transfers=free,
-                               max_transfers=k_max, discount=discount)  # fmt: skip
+                               max_transfers=k_max, discount=discount,
+                               sell_prices=sell)  # fmt: skip
         plan = best_plan(plans, policy.margin)
-        sel = Selection(plan.squad, plan.xi[0], plan.captain[0], plan.gross, 0)
-        points = score_selection(sel, gw.actual) - plan.hit
+        if gw.minutes is None:
+            sel = Selection(plan.squad, plan.xi[0], plan.captain[0], plan.gross, 0)
+            points = score_selection(sel, gw.actual) - plan.hit
+        else:
+            info_ = {i: info[i] for i in plan.squad}
+            bench = [i for i in plan.squad if i not in set(plan.xi[0])]
+            points = autosub_points(plan.xi[0], plan.captain[0], bench, info_, gw.predicted,
+                                    gw.actual, gw.minutes) - plan.hit  # fmt: skip
+        buy = {i: buy[i] if i in buy else gw.price[i] for i in plan.squad}
         run.results.append(GwResult(gw.key, points, plan.hit, plan.transfers, plan.out, plan.into,
                                     free, plan.bank))  # fmt: skip
         squad, bank = set(plan.squad), plan.bank
@@ -203,6 +267,11 @@ def season_inputs(
     eligible player are left out, so all policies are scored on the same gameweeks.
     """
     info, round_prices = season_info(con, season)
+    round_minutes: dict[int, dict[int, int]] = defaultdict(dict)
+    for el, rnd, mins in con.execute(
+        "SELECT element_id, round, SUM(minutes) FROM hist_player_gw "
+        "WHERE season = ? AND minutes IS NOT NULL GROUP BY ALL", [season]).fetchall():  # fmt: skip
+        round_minutes[rnd][el] = int(mins)
     (split,) = [s for s in walk_forward_splits(data, [season], step=None)]
     for p in predictors:
         p.fit(data, split.train)
@@ -234,7 +303,7 @@ def season_inputs(
         for p in predictors:
             out[p.name].append(GwInput(
                 key, {el: sums[p.name][el] for el in eligible}, dict(fixtures),
-                dict(carried), dict(actual),
+                dict(carried), dict(actual), round_minutes.get(key[1]) or None,
             ))  # fmt: skip
     return out, info
 

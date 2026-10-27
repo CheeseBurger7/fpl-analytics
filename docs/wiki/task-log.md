@@ -1,5 +1,43 @@
 # Task log (newest first)
 
+## 2026-10-27: FPL influence / creativity / threat as features (branch feat/blind-score-all, uncommitted)
+- `features.py`: `influence_5/10`, `creativity_5/10`, `threat_5/10` = lagged per-fixture means
+  (`ICT_WINDOWS`), leak-free like the other rolls. Data: populated in `hist_player_gw` for every
+  season since 2016-17 (xG only since 2022-23). `live._shadow` now copies the three from
+  `element_history.raw` for played-but-missing fixtures; `live_features(2026-27, 9)` has them for
+  669/669 players. New test `test_ict_features_are_lagged_means_per_fixture`.
+- **Result: no measurable gain.** `fpl backtest --model --captured --step 0` before -> after
+  (captured fraction; MAE unchanged to 3 d.p.): 2024-25 lgbm 0.409 -> 0.416, lgbm_xp 0.814 -> 0.815;
+  2023-24 lgbm 0.360 -> 0.370, lgbm_xp 0.784 -> 0.789; 2025-26 (11 GWs) lgbm 0.371 -> 0.357,
+  lgbm_xp 0.837 -> 0.810. Differences are within season-to-season noise. Kept (cheap, leak-free);
+  `xp` already carries most of this signal. Frozen GW9 picks were made before this change.
+
+## 2026-10-26: Planner backtest realism: selling price, auto-subs (branch feat/blind-score-all, uncommitted)
+- `planner.plan_transfers`: **budget bug fixed** when `sell_prices` is given: a kept player now costs
+  his selling price (before, kept players cost market price against a selling-price credit).
+- `planbacktest`: `selling_price(buy, now)` (half of a rise, rounded down), purchase prices tracked
+  per squad member; `autosub_points` (bench GK only for GK, outfield bench by predicted points, formation
+  stays legal, vice-captain = highest-predicted player who played) used when `GwInput.minutes` is set
+  (`season_inputs` fills it from `hist_player_gw.minutes`). 4 new tests, 79 pass.
+- Results, total points, `fpl backtest-planner` (both predictors; was -> now):
+  2023-24 fpl_xp planner 2786 -> 2757, lgbm_xp planner 2992 -> 2913, planner_hits 3068 -> 3066;
+  2024-25 fpl_xp planner 2579 -> 2587, lgbm_xp planner 2896 -> 2855. Per GW still 74-83 for the
+  planner, so selling price and auto-subs are small effects; the optimism is elsewhere (see caveats).
+- Caveats / still open: `xp` timing not verified (main suspect for 74-83/GW vs ~60-70 for top real
+  managers); no real free-transfer/chip history; real-squad replay from `entry_picks` not done.
+- Not done from the post-GW9 plan: run `fpl snapshot`, `fpl blind-score --gw 9` and `--all` after
+  GW9 finishes.
+
+## 2026-10-26: GW9 pre-deadline run (branch feat/blind-score-all; no code changes)
+- Ran `fpl snapshot` (snapshot 5: 669 players, 380 fixtures), `fpl entry` (8 GWs of picks),
+  `fpl blind-pick --gw 9 --model` (frozen to `data/processed/blind_gw9.json`), `fpl transfers --gw 9`.
+- Predicted XI points (in-sample, pre-deadline): rolling_mean_5 85.8, fpl_ep 95.0, lgbm_xp(ep) 67.2
+  (captains Haaland / Konsa / Neto). Score after GW9 with `fpl blind-score --gw 9`.
+- `transfers` (lgbm_xp, GW9-12, bank 0.1, 1 free): hold 174.2; 1 transfer (Rogers -> Neto) 191.9;
+  2 (+4 hit) 204.6; 3 (-8 hit) 213.8 = Rogers, Joao Pedro, Gibbs-White -> Evanilson, Henderson, Neto
+  (`best_plan` pick). Captain Neto. Not executed; the user decides.
+- First `ep_next` snapshot taken for GW9 on a fresh GW (snapshot 5), continuing the `ep` log.
+
 ## NEXT TASK (not started; written 2026-10-26): make the planner trustworthy, collect `ep`
 Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` first. Candidates, in order:
 1. **Log `ep` every gameweek.** Run `fpl snapshot` before each deadline (and `blind-pick --model`,

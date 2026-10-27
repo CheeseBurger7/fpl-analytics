@@ -7,9 +7,10 @@ the XI and captain, maximising the (discounted) sum of predicted points. The hit
 is fixed across the horizon: only transfers made now are modelled, so there is no look-ahead to
 later transfers, chips or auto-subs.
 
-Budget: new squad cost <= bank + sale value of the current squad. Sale values default to the
-current price; the real selling price is lower after a price rise (FPL keeps half the profit), so
-pass ``sell_prices`` if you know them.
+Budget: bank + sale value of the current squad >= cost of the new squad, where a kept player costs
+his selling price and a new one the market price. Selling prices default to the current price; the
+real one is lower after a price rise (FPL keeps half the profit), so pass ``sell_prices`` if you
+know them (``fpl.planbacktest.selling_price`` computes it from the purchase price).
 
 ``horizon_predictions`` builds the per-gameweek points the planner needs from ``fpl.live``.
 """
@@ -78,8 +79,9 @@ def plan_transfers(
     ids = {p.id for p in players}
     if len(squad) != SQUAD_SIZE or squad - ids:
         raise ValueError("squad must be 15 ids from the player pool")
-    sold = sum((sell_prices or {}).get(p.id, p.price) for p in players if p.id in squad)
-    budget = bank + sold
+    # a kept player costs his selling price, a new one his market price
+    unit = [(sell_prices or {}).get(p.id, p.price) if p.id in squad else p.price for p in players]
+    budget = bank + sum(u for u, p in zip(unit, players, strict=True) if p.id in squad)
     n, horizon = len(players), len(points)
     # variables: x (n, in squad) | s_g (n each, in XI) | c_g (n each, captain)
 
@@ -101,7 +103,7 @@ def plan_transfers(
         for pos, (lo, hi) in XI_BOUNDS.items():
             rows.append(({S(g) + i: 1 for i, p in enumerate(players) if p.position == pos}, lo, hi))
     rows.append(({i: 1 for i in range(n)}, SQUAD_SIZE, SQUAD_SIZE))
-    rows.append(({i: p.price for i, p in enumerate(players)}, -inf, budget))
+    rows.append(({i: u for i, u in enumerate(unit)}, -inf, budget))
     for pos, quota in SQUAD_QUOTA.items():
         rows.append(({i: 1 for i, p in enumerate(players) if p.position == pos}, quota, quota))
     for team in {p.team for p in players}:
@@ -148,7 +150,7 @@ def plan_transfers(
             captain=tuple(next(players[i].id for i in range(n) if z[C(g) + i])
                           for g in range(horizon)),
             gross=gross, net=gross - hit,
-            bank=budget - sum(p.price for p in players if p.id in new),
+            bank=budget - sum(u for u, p in zip(unit, players, strict=True) if p.id in new),
         ))  # fmt: skip
     if not plans:
         raise InfeasibleError("no legal plan for this squad/bank")

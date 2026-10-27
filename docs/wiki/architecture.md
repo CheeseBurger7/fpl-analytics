@@ -85,6 +85,8 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
   `Policy(name, max_transfers, margin)`; `HOLD`, `PLANNER`, `PLANNER_HITS`. Bookkeeping: bank and
   free transfers (`next_free_transfers`, cap 5), hit = 4 per transfer beyond the free ones.
   Lineups come from predictions; `actual` is used only in `score_selection`.
+- `selling_price`, `autosub_points` (used when `GwInput.minutes` is set); sale price = FPL selling
+  price from tracked purchase prices.
 - `horizon_points`: later GWs = latest per-fixture prediction x that GW's fixture count (no leak).
 - `season_inputs(data, predictors, season, con)`: fits each predictor once per season, shared
   eligible pool, prices carried over blanks, rounds without any forecast skipped.

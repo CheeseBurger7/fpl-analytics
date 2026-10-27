@@ -76,9 +76,12 @@ def _shadow(con: duckdb.DuckDBPyConnection, season: str, event: int, sid: int) -
         """
         INSERT INTO hist_player_gw (season, element_id, fixture_id, round, opponent_team, was_home,
                                     kickoff_time, team_h_score, team_a_score, minutes, total_points,
-                                    value)
+                                    value, influence, creativity, threat)
         SELECT ?, h.element_id, h.fixture_id, h.round, h.opponent_team, h.was_home,
-               h.kickoff_time, f.team_h_score, f.team_a_score, h.minutes, h.total_points, h.value
+               h.kickoff_time, f.team_h_score, f.team_a_score, h.minutes, h.total_points, h.value,
+               CAST(json_extract_string(h.raw, '$.influence') AS DOUBLE),
+               CAST(json_extract_string(h.raw, '$.creativity') AS DOUBLE),
+               CAST(json_extract_string(h.raw, '$.threat') AS DOUBLE)
         FROM element_history h
         JOIN fixture_snapshots f ON f.snapshot_id = ? AND f.fixture_id = h.fixture_id
         WHERE h.round < ?
