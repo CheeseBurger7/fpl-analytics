@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-27, horizon models on branch feat/next-task)
+# Status (last updated: 2026-10-27, xp timing investigated on branch feat/xp-timing)
 
 ## Done
 | PR | What |
