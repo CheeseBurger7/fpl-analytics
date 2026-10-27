@@ -1,6 +1,38 @@
 # Task log (newest first)
 
-## 2026-10-27: FPL influence / creativity / threat as features (branch feat/blind-score-all, uncommitted)
+## NEXT TASK (not started; written 2026-10-27): tune LightGBM
+Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` first.
+1. **Tune LightGBM** (`fpl.model.DEFAULT_PARAMS`, `n_rounds`): walk-forward over several seasons,
+   report captured fraction and MAE for `lgbm` and `lgbm_xp`; seasons differ by +-0.03, so do not
+   chase single-season gains (the ICT features were within that noise).
+2. Context: planner backtest totals are still optimistic (74-85 pts/GW); `xp` timing unverified.
+   Chores: after GW9, `fpl snapshot` + `fpl blind-score --gw 9` / `--all`; log `ep` each GW.
+
+## 2026-10-27: Horizon-aware predictions (branch feat/next-task)
+- **New `fpl.horizon`**: `HorizonPredictor(h, use_xp)` predicts the points of a fixture h GWs after
+  the decision from the player's *source row* (latest row in a GW <= decision GW, same season) plus
+  the target's `was_home` and the GW gap. Opponent form is dropped (no opponent id to look it up
+  as of the decision), own-team form comes from the source row. `PersistencePredictor` is the
+  reference (base model on the source row = the planner's persistence). Leak-free by construction.
+- `fpl backtest --model --horizons H --step 0` adds both per h; `GwInput.ahead` +
+  `season_inputs(ahead_models=...)` + `fpl backtest-planner --horizon-models` feed them to the
+  planner backtest (`horizon_points` prefers `ahead`). 7 new tests, 86 pass.
+- **Prediction quality, 2024-25, per-GW MAE / Spearman** (step 0): h1 lgbm_xp persistence
+  1.081 / 0.680 vs lgbm_xp_h1 1.060 / 0.691; h2 1.124 / 0.651 vs 1.095 / 0.663; h3 1.175 / 0.618
+  vs 1.121 / 0.641. Without xp, horizon models ~ persistence (h3 lgbm 1.138 vs 1.135).
+  So the horizon model helps a little at the metric level.
+- **Planner backtest, lgbm_xp only, total points (planner / planner_hits), persistence vs
+  horizon models:** horizon 3: 2023-24 3028 / 3010 vs 3009 / 3033; 2024-25 3228 / 3195 vs
+  2874 / 2961. Horizon 4, 2024-25: 3170 / 3180 vs 2932 / 3028. Horizon 1, 2024-25: 3050 / 3109.
+  **The horizon models did not help the planner and were worse on 2024-25**, despite better
+  MAE. Likely cause: their later-GW forecasts are flatter than the current-GW `xp`-fed ones, so
+  the plan weighs the first GW more and transfers less (88-96 vs 105-108). Persistence stays the
+  default; `--horizon-models` is opt-in. Horizon 6 (planner / planner_hits, persistence vs models): 2023-24 3025 / 3025 vs 2975 / 2875; 2024-25 3107 / 3117 vs 2958 / 3005. Horizon 1, 2023-24: 2990 / 3025. Persistence wins or ties in every comparison.
+- Caveat: numbers with only `lgbm_xp` use a larger eligible pool than the earlier two-predictor
+  tables, so they are not comparable with them.
+- Horizon-model live wiring (`planner.horizon_predictions`) NOT done: no planner gain.
+
+## 2026-10-27: FPL influence / creativity / threat as features (PR #16)
 - `features.py`: `influence_5/10`, `creativity_5/10`, `threat_5/10` = lagged per-fixture means
   (`ICT_WINDOWS`), leak-free like the other rolls. Data: populated in `hist_player_gw` for every
   season since 2016-17 (xG only since 2022-23). `live._shadow` now copies the three from
@@ -12,7 +44,7 @@
   lgbm_xp 0.837 -> 0.810. Differences are within season-to-season noise. Kept (cheap, leak-free);
   `xp` already carries most of this signal. Frozen GW9 picks were made before this change.
 
-## 2026-10-26: Planner backtest realism: selling price, auto-subs (branch feat/blind-score-all, uncommitted)
+## 2026-10-26: Planner backtest realism: selling price, auto-subs (PR #16)
 - `planner.plan_transfers`: **budget bug fixed** when `sell_prices` is given: a kept player now costs
   his selling price (before, kept players cost market price against a selling-price credit).
 - `planbacktest`: `selling_price(buy, now)` (half of a rise, rounded down), purchase prices tracked
@@ -28,7 +60,7 @@
 - Not done from the post-GW9 plan: run `fpl snapshot`, `fpl blind-score --gw 9` and `--all` after
   GW9 finishes.
 
-## 2026-10-26: GW9 pre-deadline run (branch feat/blind-score-all; no code changes)
+## 2026-10-26: GW9 pre-deadline run (no code changes)
 - Ran `fpl snapshot` (snapshot 5: 669 players, 380 fixtures), `fpl entry` (8 GWs of picks),
   `fpl blind-pick --gw 9 --model` (frozen to `data/processed/blind_gw9.json`), `fpl transfers --gw 9`.
 - Predicted XI points (in-sample, pre-deadline): rolling_mean_5 85.8, fpl_ep 95.0, lgbm_xp(ep) 67.2
@@ -37,17 +69,6 @@
   2 (+4 hit) 204.6; 3 (-8 hit) 213.8 = Rogers, Joao Pedro, Gibbs-White -> Evanilson, Henderson, Neto
   (`best_plan` pick). Captain Neto. Not executed; the user decides.
 - First `ep_next` snapshot taken for GW9 on a fresh GW (snapshot 5), continuing the `ep` log.
-
-## NEXT TASK (not started; written 2026-10-26): make the planner trustworthy, collect `ep`
-Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` first. Candidates, in order:
-1. **Log `ep` every gameweek.** Run `fpl snapshot` before each deadline (and `blind-pick --model`,
-   `transfers`) so that `ep_next` history exists for the GW it forecasts; there is none today
-   (all 3 snapshots hold GW9's `ep_next`). With a few GWs, redo the `ep` vs `xp` check below.
-2. **Realism of the planner backtest.** Real selling price (half of the profit), real free
-   transfers/chips, auto-subs; replay the real squad from `entry_picks` for 2026-27 (not done yet;
-   8 GWs). Also check whether vaastav `xp` is recorded before the deadline (absolute points are
-   optimistic, see below).
-3. Horizon-aware targets (1-6 GWs) instead of persistence; tune LightGBM; chips.
 
 ## 2026-10-26: Planner backtest, `ep` as `xp`, zero-`xp` rounds (branch feat/planner-backtest)
 - **New** `fpl.planbacktest` + `fpl backtest-planner [--season S] [--predictor fpl_xp|lgbm_xp]

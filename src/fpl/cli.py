@@ -60,6 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--by-season", action="store_true")
     b.add_argument("--model", action="store_true",
                    help="add LightGBM predictors lgbm / lgbm_xp (needs lightgbm; slow)")
+    b.add_argument("--horizons", type=int, default=0, metavar="H",
+                   help="with --model, add horizon models and persistence for h = 1..H "
+                        "(use --step 0: models are fit once per season)")
     b.add_argument("--captured", action="store_true",
                    help="add ILP captured-fraction metric (needs scipy; slow)")
 
@@ -94,6 +97,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="repeatable; default both")
     pb.add_argument("--horizon", type=int, default=1, help="gameweeks to look ahead (1 = no leak)")
     pb.add_argument("--discount", type=float, default=1.0)
+    pb.add_argument("--horizon-models", action="store_true",
+                    help="lgbm_xp uses per-horizon models for later gameweeks, not persistence")
     pb.add_argument("--min-history", type=int, default=5)
     return p
 
@@ -102,6 +107,22 @@ def _model_predictors() -> list:
     from fpl.model import model_predictors  # optional dependency
 
     return model_predictors()
+
+
+def _backtest_predictors(args: argparse.Namespace) -> list:
+    preds = default_baselines()
+    if args.model:
+        models = _model_predictors()
+        preds += models
+        if args.horizons:
+            from fpl.horizon import HorizonPredictor, PersistencePredictor
+
+            for h in range(1, args.horizons + 1):
+                preds += [PersistencePredictor(models[1], h), PersistencePredictor(models[0], h),
+                          HorizonPredictor(h, use_xp=True), HorizonPredictor(h)]  # fmt: skip
+    elif args.horizons:
+        raise SystemExit("--horizons needs --model")
+    return preds
 
 
 def planner_backtest(store: Store, args: argparse.Namespace) -> None:
@@ -120,8 +141,14 @@ def planner_backtest(store: Store, args: argparse.Namespace) -> None:
     if "lgbm_xp" in wanted:
         preds.append(_model_predictors()[1])
     data = load_dataset(store.con)
+    ahead = None
+    if args.horizon_models and "lgbm_xp" in wanted:
+        from fpl.horizon import HorizonPredictor
+
+        ahead = {"lgbm_xp": [HorizonPredictor(h, use_xp=True) for h in range(1, args.horizon)]}
     for season in args.season or ["2023-24", "2024-25"]:
-        inputs, info = season_inputs(data, preds, season, store.con, min_history=args.min_history)
+        inputs, info = season_inputs(data, preds, season, store.con, min_history=args.min_history,
+                                     ahead_models=ahead)  # fmt: skip
         first = next(iter(inputs.values()))
         ceiling = sum(ceiling_points(g, info) for g in first)
         print(f"== {season}, horizon {args.horizon}: hindsight ceiling {ceiling:.0f} "
@@ -264,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "backtest":
             result = run_backtest(
                 load_dataset(store.con),
-                default_baselines() + (_model_predictors() if args.model else []),
+                _backtest_predictors(args),
                 args.season or ["2023-24", "2024-25"],
                 step=args.step or None,
                 min_history=args.min_history,

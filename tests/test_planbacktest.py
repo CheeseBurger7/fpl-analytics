@@ -178,3 +178,13 @@ def test_goalkeeper_only_replaced_by_goalkeeper():
     mins = {i: 90 for i in pos} | {1: 0}
     pts = autosub_points(xi, 10, bench, info, {i: 1.0 for i in pos}, actual, mins)
     assert pts == pytest.approx(10 * 1.0 + 4.0 + 1.0)
+
+
+def test_horizon_points_prefers_ahead_predictions_over_persistence():
+    first = _gw(1, {16: 6.0})
+    first = GwInput(first.key, first.predicted, first.fixtures, first.price, first.actual,
+                    ahead=({16: 2.5},))  # fmt: skip
+    gws = [first, _gw(2, {16: 1.0}), _gw(3, {16: 1.0})]
+    pts = horizon_points(gws, 0, 3, {16: 6.0})
+    assert pts[1] == {16: 2.5}  # model-based
+    assert pts[2][16] == 6.0  # persistence beyond the supplied horizon

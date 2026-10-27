@@ -99,3 +99,7 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
 fpl backtest --season 2024-25 --step 0 --by-season [--captured]   # --captured takes ~55s per season
 fpl backtest-planner [--season S] [--predictor fpl_xp|lgbm_xp] [--horizon 1]   # ~45s per season/predictor
 ```
+
+## `fpl.horizon` (branch feat/next-task)
+`HorizonPredictor` / `PersistencePredictor` / `sources`: per-horizon LightGBM on as-of-decision
+features. CLI: `fpl backtest --model --horizons H --step 0`, `fpl backtest-planner --horizon-models`.
