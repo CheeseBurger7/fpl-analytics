@@ -13,21 +13,25 @@
 | #10 | `fpl blind-score` scorer; GW8 scored (fresh fpl_ep 0.607, rolling_mean_5 0.324) |
 | #11 | `fpl.model` LightGBM; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
 | #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
-| (branch) | `fpl.planbacktest` + `fpl backtest-planner`; zero-`xp` rounds fixed; `ep` as `xp` for `lgbm_xp` live |
+| #14 | `fpl.planbacktest` + `fpl backtest-planner`; zero-`xp` rounds fixed; `ep` as `xp` for `lgbm_xp` live |
+| #15 | `fpl blind-score --all` |
+| (branch) | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
 
 ## Next: make the planner trustworthy, collect `ep`
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
+0. **After GW9 finishes:** `fpl snapshot`, `fpl blind-score --gw 9`, `fpl blind-score --all`, record
+   the numbers (GW9 snapshot/blind-pick/transfers were done 2026-10-26). Repeat each GW.
 1. Log `ep` every GW (aggregate with `fpl blind-score --all`): `fpl snapshot` before each deadline plus `fpl blind-pick --gw N --model`
    (before kickoffs), `fpl blind-score --gw N` after, and `fpl transfers`. No `ep` history
    exists yet, so the `ep`-as-`xp` decision rests on one gameweek (GW8).
-2. Realism of the planner backtest: selling price, free transfers/chips, auto-subs, real-squad
+2. Realism of the planner backtest (selling price and auto-subs DONE 2026-10-26, small effect): free transfers/chips, real-squad
    replay from `entry_picks`; verify `xp` timing (absolute backtest points are optimistic).
 3. Horizon-aware predictions (1-6 GW targets) instead of persistence; tune LightGBM.
 
 ## Later
 - Chips (wildcard, free hit, bench boost, triple captain), multi-step transfer plans, real
   selling prices, auto-subs in the planner.
-- Lagged ICT / xG / xA / xGI features (xG only from 2022-23).
+- Lagged xG / xA / xGI features (xG only from 2022-23). ICT done 2026-10-27: no gain.
 - Differentials, explorer.
 - Fix mid-season-mover team features (see data.md).
 

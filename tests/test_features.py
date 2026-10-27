@@ -7,13 +7,15 @@ from fpl.store import HIST_GW_COLUMNS, Store
 
 
 def _gw_row(season, element, fixture, rnd, kickoff, *, pts, minutes, opp=2, home=True, value=50,
-            h=1, a=0):
+            h=1, a=0, ict=None):
     row = dict.fromkeys(HIST_GW_COLUMNS)
     row.update(
         season=season, element_id=element, fixture_id=fixture, round=rnd, opponent_team=opp,
         was_home=home, kickoff_time=kickoff, team_h_score=h, team_a_score=a, minutes=minutes,
         total_points=pts, value=value,
     )
+    if ict:
+        row.update(influence=ict[0], creativity=ict[1], threat=ict[2])
     return tuple(row[c] for c in HIST_GW_COLUMNS)
 
 
@@ -112,3 +114,15 @@ def test_team_form_excludes_current_gameweek(store):
     f = _features(store)
     assert f[1]["own_goals_for_6"] is None
     assert f[2]["own_goals_for_6"] == 3 and f[2]["own_goals_against_6"] == 1
+
+
+def test_ict_features_are_lagged_means_per_fixture(store):
+    rows = [
+        _gw_row("2022-23", 10, 1, 1, "2022-08-06 14:00:00", pts=1, minutes=90, ict=(10, 20, 30)),
+        _gw_row("2022-23", 10, 2, 2, "2022-08-13 14:00:00", pts=1, minutes=90, ict=(30, 40, 50)),
+        _gw_row("2022-23", 10, 3, 3, "2022-08-20 14:00:00", pts=1, minutes=90, ict=(999, 999, 999)),
+    ]
+    _load(store, "2022-23", rows)
+    f = _features(store)
+    assert f[1]["threat_5"] is None
+    assert f[3]["influence_5"] == 20 and f[3]["creativity_10"] == 30 and f[3]["threat_5"] == 40
