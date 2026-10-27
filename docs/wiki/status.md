@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-26, planner backtest done on branch feat/planner-backtest)
+# Status (last updated: 2026-10-27, horizon models on branch feat/next-task)
 
 ## Done
 | PR | What |
@@ -15,22 +15,26 @@
 | #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
 | #14 | `fpl.planbacktest` + `fpl backtest-planner`; zero-`xp` rounds fixed; `ep` as `xp` for `lgbm_xp` live |
 | #15 | `fpl blind-score --all` |
-| (branch) | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
+| (branch feat/next-task) | `fpl.horizon` per-horizon models (better MAE, no planner gain; opt-in) |
+| #16 | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
 
-## Next: make the planner trustworthy, collect `ep`
+## Next: tune LightGBM (start here)
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
-0. **After GW9 finishes:** `fpl snapshot`, `fpl blind-score --gw 9`, `fpl blind-score --all`, record
-   the numbers (GW9 snapshot/blind-pick/transfers were done 2026-10-26). Repeat each GW.
-1. Log `ep` every GW (aggregate with `fpl blind-score --all`): `fpl snapshot` before each deadline plus `fpl blind-pick --gw N --model`
-   (before kickoffs), `fpl blind-score --gw N` after, and `fpl transfers`. No `ep` history
-   exists yet, so the `ep`-as-`xp` decision rests on one gameweek (GW8).
-2. Realism of the planner backtest (selling price and auto-subs DONE 2026-10-26, small effect): free transfers/chips, real-squad
-   replay from `entry_picks`; verify `xp` timing (absolute backtest points are optimistic).
-3. Horizon-aware predictions (1-6 GW targets) instead of persistence; tune LightGBM.
+1. **Tune LightGBM** (`fpl.model`: `DEFAULT_PARAMS`, `n_rounds`; walk-forward, several seasons,
+   captured fraction + MAE for `lgbm` / `lgbm_xp`).
+Standing chores (do whenever a GW passes):
+- **After GW9 finishes:** `fpl snapshot`, `fpl blind-score --gw 9`, `fpl blind-score --all`, record the
+  numbers (GW9 snapshot / blind-pick / transfers were done 2026-10-26; GW9 picks predate the ICT features).
+- Log `ep` every GW: `fpl snapshot` before each deadline, `fpl blind-pick --gw N --model` (before
+  kickoffs), `fpl transfers`, then `fpl blind-score --gw N`. No `ep` history exists yet, so the
+  `ep`-as-`xp` decision rests on one gameweek (GW8).
+Still open from the planner-realism task (selling price and auto-subs DONE, small effect):
+real free-transfer/chip history, replaying the real squad from `entry_picks`, and verifying `xp`
+timing (absolute backtest points of 74-83/GW are optimistic).
 
 ## Later
-- Chips (wildcard, free hit, bench boost, triple captain), multi-step transfer plans, real
-  selling prices, auto-subs in the planner.
+- Chips (wildcard, free hit, bench boost, triple captain), multi-step transfer plans, live selling
+  prices from `entry` data (the backtest already models them).
 - Lagged xG / xA / xGI features (xG only from 2022-23). ICT done 2026-10-27: no gain.
 - Differentials, explorer.
 - Fix mid-season-mover team features (see data.md).

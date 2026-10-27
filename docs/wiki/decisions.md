@@ -32,3 +32,6 @@
 - **`ep` stands in for `xp` live (provisional).** One-GW test (GW8): `lgbm_xp` fed `ep` captured
   0.828 vs `fpl_ep` 0.566, so `fpl transfers` defaults to `lgbm_xp` and `blind-pick --model` records
   it. Later horizon GWs have no `ep` and use persistence. Revisit once several GWs of `ep` exist.
+- **Horizon models are opt-in.** Per-horizon LightGBM (`fpl.horizon`) lowers MAE vs persistence
+  (h3 1.121 vs 1.175, 2024-25) but did not improve planner totals (worse on 2024-25), so the
+  planner keeps persistence by default.

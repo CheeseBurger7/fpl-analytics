@@ -18,11 +18,12 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import duckdb
 
 from fpl.backtest import Dataset, GwKey, Predictor, walk_forward_splits
+from fpl.horizon import HorizonPredictor
 from fpl.optimizer import (
     BUDGET,
     GK,
@@ -60,6 +61,9 @@ class GwInput:
     price: Mapping[int, int]  # tenths, carried forward over blanks
     actual: Mapping[int, float]
     minutes: Mapping[int, int] | None = None  # played minutes; None = no auto-subs
+    # predicted points for the next gameweeks (j = 1, 2, ...) made with only what is known now;
+    # when shorter than the horizon, ``horizon_points`` falls back to persistence
+    ahead: tuple[Mapping[int, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -154,10 +158,14 @@ def _players(
 
 
 def horizon_points(gws: Sequence[GwInput], i: int, horizon: int, per_fixture: Mapping[int, float]):
-    """Predicted points for gameweeks i..i+horizon-1: the real prediction now, persistence after."""
+    """Predicted points for gameweeks i..i+horizon-1: the real prediction now, then the
+    horizon models' ``ahead`` predictions where present, persistence otherwise."""
     out: list[dict[int, float]] = [dict(gws[i].predicted)]
     for j in range(i + 1, min(i + horizon, len(gws))):
-        out.append({p: v * gws[j].fixtures.get(p, 0) for p, v in per_fixture.items()})
+        if j - i <= len(gws[i].ahead):
+            out.append(dict(gws[i].ahead[j - i - 1]))
+        else:
+            out.append({p: v * gws[j].fixtures.get(p, 0) for p, v in per_fixture.items()})
     return out
 
 
@@ -259,12 +267,17 @@ def season_inputs(
     con: duckdb.DuckDBPyConnection,
     *,
     min_history: int = 5,
+    ahead_models: Mapping[str, Sequence[HorizonPredictor]] | None = None,
 ) -> tuple[dict[str, list[GwInput]], dict[int, tuple[int, int]]]:
     """Per predictor, the season's ``GwInput`` list; fits each predictor once for the season.
 
     All predictors share one eligible pool per gameweek (enough history and a prediction from
     every predictor). Prices carry forward over a player's blank gameweeks. Rounds with no
     eligible player are left out, so all policies are scored on the same gameweeks.
+
+    ``ahead_models[name]`` = horizon predictors for h = 1, 2, ... of predictor ``name``: they are
+    fitted on the season's training rows and fill ``GwInput.ahead`` (player sums over the later
+    gameweek's fixtures, from features as of the current gameweek; eligible players only).
     """
     info, round_prices = season_info(con, season)
     round_minutes: dict[int, dict[int, int]] = defaultdict(dict)
@@ -275,9 +288,13 @@ def season_inputs(
     (split,) = [s for s in walk_forward_splits(data, [season], step=None)]
     for p in predictors:
         p.fit(data, split.train)
+    for models in (ahead_models or {}).values():
+        for m in models:
+            m.fit(data, split.train)
     elements, targets = data.columns["element_id"], data.columns["target"]
-    n_prior = data.columns["n_prior_fixtures"]
+    n_prior, ordinals = data.columns["n_prior_fixtures"], data.columns["gw_ordinal"]
     out: dict[str, list[GwInput]] = {p.name: [] for p in predictors}
+    kept: list[tuple[int, int, set[int]]] = []  # (first, end, eligible) of each GwInput
     carried: dict[int, int] = {}
     for key, first, end in split.eval:
         carried.update(round_prices.get(key[1], {}))
@@ -305,7 +322,29 @@ def season_inputs(
                 key, {el: sums[p.name][el] for el in eligible}, dict(fixtures),
                 dict(carried), dict(actual), round_minutes.get(key[1]) or None,
             ))  # fmt: skip
+        kept.append((first, end, eligible))
+    for name, models in (ahead_models or {}).items():
+        for k, (first, _, eligible) in enumerate(kept):
+            as_of = ordinals[first]
+            ahead = []
+            for h, m in enumerate(models, start=1):
+                if k + h >= len(kept):
+                    break
+                ahead.append(_gw_sums(m, data, range(*kept[k + h][:2]), eligible, as_of))
+            out[name][k] = replace(out[name][k], ahead=tuple(ahead))
     return out, info
+
+
+def _gw_sums(
+    model: HorizonPredictor, data: Dataset, idx: range, eligible: set[int], as_of: int
+) -> dict[int, float]:
+    """Horizon-model points per eligible player over the fixtures of ``idx`` (one gameweek)."""
+    elements = data.columns["element_id"]
+    out: dict[int, float] = {}
+    for i, v in zip(idx, model.predict(data, idx, as_of), strict=True):
+        if v is not None and elements[i] in eligible:
+            out[elements[i]] = out.get(elements[i], 0.0) + v
+    return out
 
 
 def summarize(runs: Sequence[SeasonRun]) -> list[dict[str, object]]:
