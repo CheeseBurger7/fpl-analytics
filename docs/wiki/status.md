@@ -15,13 +15,13 @@
 | #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
 | #14 | `fpl.planbacktest` + `fpl backtest-planner`; zero-`xp` rounds fixed; `ep` as `xp` for `lgbm_xp` live |
 | #15 | `fpl blind-score --all` |
-| (branch feat/next-task) | `fpl.horizon` per-horizon models (better MAE, no planner gain; opt-in) |
+| #17 | `fpl.horizon` per-horizon models (better MAE, no planner gain; opt-in); LightGBM tuning sweep: defaults kept |
 | #16 | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
 
-## Next: tune LightGBM (start here)
+## Next: planner trustworthiness (start here)
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
-1. **Tune LightGBM** (`fpl.model`: `DEFAULT_PARAMS`, `n_rounds`; walk-forward, several seasons,
-   captured fraction + MAE for `lgbm` / `lgbm_xp`).
+1. Verify `xp` timing (backtest points of 74-85/GW look optimistic), replay the real squad from
+   `entry_picks`, real free-transfer/chip history.
 Standing chores (do whenever a GW passes):
 - **After GW9 finishes:** `fpl snapshot`, `fpl blind-score --gw 9`, `fpl blind-score --all`, record the
   numbers (GW9 snapshot / blind-pick / transfers were done 2026-10-26; GW9 picks predate the ICT features).
