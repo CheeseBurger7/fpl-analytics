@@ -208,3 +208,21 @@ def test_summary_by_season_and_duplicate_names_rejected(data):
     assert [(r["season"], r["n_gws"]) for r in rows] == [(S1, 3), (S2, 2)]
     with pytest.raises(ValueError, match="unique"):
         run_backtest(data, [ConstantPredictor("c"), ConstantPredictor("c")], [S1])
+
+
+def test_xp_prev_is_the_latest_earlier_xp_per_fixture_and_skips_missing_rounds():
+    with Store() as s:
+        rows = [  # player 10: GW2 is a double (xp 2 + 4 -> 3 per fixture); GW3 has no xp
+            _gw_row(S1, 10, 1, 1, "2022-08-06 14:00:00", pts=1, xp=1.0),
+            _gw_row(S1, 10, 2, 2, "2022-08-13 14:00:00", pts=1, xp=2.0),
+            _gw_row(S1, 10, 3, 2, "2022-08-14 14:00:00", pts=1, xp=4.0),
+            _gw_row(S1, 10, 4, 3, "2022-08-20 14:00:00", pts=1, xp=None),
+            _gw_row(S1, 10, 5, 4, "2022-08-27 14:00:00", pts=1, xp=5.0),
+        ]
+        _load(s, S1, rows)
+        d = load_dataset(s.con)
+    by_round = {r: p for r, p in zip(d.columns["round"], d.columns["xp_prev"], strict=True)}
+    assert by_round[1] is None  # nothing before the first gameweek
+    assert by_round[2] == 1.0
+    assert by_round[3] == 3.0
+    assert by_round[4] == 3.0  # GW3 has no xp: carried from GW2

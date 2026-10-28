@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-27, horizon models on branch feat/next-task)
+# Status (last updated: 2026-10-27, xp timing investigated on branch feat/xp-timing)
 
 ## Done
 | PR | What |
@@ -15,13 +15,16 @@
 | #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
 | #14 | `fpl.planbacktest` + `fpl backtest-planner`; zero-`xp` rounds fixed; `ep` as `xp` for `lgbm_xp` live |
 | #15 | `fpl blind-score --all` |
+| #18 | LightGBM tuning sweep: defaults kept |
+| (branch feat/xp-timing) | `xp` timing investigation: `xp` leaks; `xp_prev` leak-free proxy |
 | #17 | `fpl.horizon` per-horizon models (better MAE, no planner gain; opt-in); LightGBM tuning sweep: defaults kept |
 | #16 | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
 
-## Next: planner trustworthiness (start here)
+## Next: real-squad replay, chips (start here)
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
-1. Verify `xp` timing (backtest points of 74-85/GW look optimistic), replay the real squad from
-   `entry_picks`, real free-transfer/chip history.
+1. Replay the real squad from `entry_picks` (2026-27); real free-transfer / chip history.
+   **`xp` timing was investigated 2026-10-27: vaastav `xp` very likely partly leaks the GW result**
+   (task-log). Treat `fpl_xp` / `lgbm_xp` / planner absolute numbers as optimistic.
 Standing chores (do whenever a GW passes):
 - **After GW9 finishes:** `fpl snapshot`, `fpl blind-score --gw 9`, `fpl blind-score --all`, record the
   numbers (GW9 snapshot / blind-pick / transfers were done 2026-10-26; GW9 picks predate the ICT features).
@@ -44,5 +47,5 @@ timing (absolute backtest points of 74-83/GW are optimistic).
 - vaastav has 2026-27 only to GW6 (checked 2026-10-25); how quickly does it catch up? The adapter
   covers the gap from `element_history`.
 - Is `ep_this` really per-GW? It equalled `ep_next` in every spot check.
-- Is vaastav `xp` recorded before the deadline? Backtested planner scores (70-85/GW) look too high.
+- How much of `xp`'s backtest value is leak? Live `ep` vs backtest `xp` are close over 2 GWs; need more GWs.
 - Does `ep` as `xp` hold up beyond GW8? One gameweek: lgbm_xp(ep) 0.828 vs fpl_ep 0.566.

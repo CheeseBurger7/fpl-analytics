@@ -45,13 +45,14 @@ class LightGBMPredictor:
 
     name: str = "lgbm"
     use_xp: bool = False
+    xp_column: str = "xp"  # "xp_prev" = last gameweek's xp (leak-free in the backtest)
     n_rounds: int = 300
     params: dict = field(default_factory=lambda: dict(DEFAULT_PARAMS))
     model: object = field(default=None, init=False, repr=False)
 
     @property
     def columns(self) -> tuple[str, ...]:
-        return (*FEATURE_COLUMNS, "xp") if self.use_xp else FEATURE_COLUMNS
+        return (*FEATURE_COLUMNS, self.xp_column) if self.use_xp else FEATURE_COLUMNS
 
     def fit(self, data: Dataset, idx: Sequence[int]) -> None:
         import lightgbm as lgb  # optional extra

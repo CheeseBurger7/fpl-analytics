@@ -90,6 +90,10 @@ def load_dataset(con: duckdb.DuckDBPyConnection) -> Dataset:
 
     vaastav stores a missing ``xp`` as 0 for a whole round (27 of 38 rounds in 2025-26), so a
     round whose ``xp`` is 0 for everyone is treated as missing (NULL), not as a forecast of 0.
+
+    ``xp_prev`` is the player's ``xp`` per fixture in his latest earlier gameweek with an ``xp``.
+    vaastav's ``xp`` of a gameweek looks partly recorded after it was played (see the wiki), so
+    ``xp`` itself may leak the result; ``xp_prev`` only holds what was known before the deadline.
     """
     rel = build_features(con)
     cols = ", ".join(f"f.{c}" for c in FEATURE_COLUMNS)
@@ -100,11 +104,23 @@ def load_dataset(con: duckdb.DuckDBPyConnection) -> Dataset:
                MIN(f.kickoff_time) OVER (PARTITION BY f.season, f.round) AS gw_start, {cols}
         FROM feat f JOIN hist_player_gw g USING (season, element_id, fixture_id)
         WHERE f.kickoff_time IS NOT NULL
+    ),
+    rx AS (
+        SELECT season, element_id, round, AVG(xp) AS xp_r, MIN(kickoff_time) AS k
+        FROM j GROUP BY ALL
+    ),
+    rl AS (
+        SELECT season, element_id, round,
+               LAST_VALUE(xp_r IGNORE NULLS) OVER (
+                   PARTITION BY season, element_id ORDER BY k
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS xp_prev
+        FROM rx
     )
     SELECT season, round,
            DENSE_RANK() OVER (ORDER BY gw_start, season, round) AS gw_ordinal,
-           gw_start, kickoff_time, element_id, fixture_id, target, xp, {", ".join(FEATURE_COLUMNS)}
-    FROM j
+           gw_start, kickoff_time, element_id, fixture_id, target, xp, xp_prev,
+           {", ".join(FEATURE_COLUMNS)}
+    FROM j JOIN rl USING (season, element_id, round)
     ORDER BY gw_start, season, round, kickoff_time, fixture_id, element_id
     """
     cur = rel.query("feat", sql)

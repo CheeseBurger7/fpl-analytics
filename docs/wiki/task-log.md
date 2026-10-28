@@ -1,22 +1,49 @@
 # Task log (newest first)
 
-## NEXT TASK (not started; written 2026-10-27): real-squad replay / `xp` timing
-Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` first.
-1. Verify whether vaastav `xp` is recorded before the deadline (planner backtest 74-85 pts/GW is
-   optimistic); replay the real squad from `entry_picks` for 2026-27; real free-transfer/chip history.
-2. Chores: after GW9, `fpl snapshot` + `fpl blind-score --gw 9` / `--all`; log `ep` each GW.
+## NEXT TASK (not started; written 2026-10-27): real-squad replay, chips
+Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` timing entry below.
+1. Replay the real squad from `entry_picks` for 2026-27; real free-transfer / chip history.
+2. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The
+   live `ep` track record is the only clean arbiter for `xp` (see below).
 
-## 2026-10-27: LightGBM tuning sweep (branch feat/next-task): no change
-- Walk-forward, one fit per season, `fpl.model` defaults vs 7 variants, seasons 2022-23..2024-25,
-  mean captured fraction / MAE over the 3 seasons (lgbm | lgbm_xp):
-  base (lr .05, 300 rounds, 31 leaves, min_data 200, l2 10) 0.402 / 0.768, MAE 1.053 / 0.761;
-  lr .03 x 500 0.408 / 0.772; 150 rounds 0.409 / 0.776; 15 leaves x 400 0.408 / 0.778;
-  63 leaves, min_data 400 0.395 / 0.768; min_data 50 0.404 / 0.779; l2 50 0.398 / 0.778;
-  huber (alpha 3) 0.414 / 0.763, MAE 1.020 / 0.745.
-- All captured-fraction differences are <= 0.011, well inside the +-0.03 season noise, so
-  `DEFAULT_PARAMS` and `n_rounds` are unchanged. Huber lowers MAE (it fits the median-ish) but not
-  captured fraction. Script was a throwaway; rerun by editing `DEFAULT_PARAMS` and
-  `fpl backtest --model --captured --step 0 --season 2022-23 --season 2023-24 --season 2024-25`.
+## 2026-10-28: GW9 transfer question, Joao Pedro out (no code changes)
+- Ran `fpl snapshot` (snapshot 6) and `fpl entry`. Joao Pedro: thigh injury, no return date, 0% chance,
+  902k transfers out, price -0.1. Candidates: N.Jackson 6.8m (+0.2m this GW, 823k in), Evanilson 6.2m
+  (+0.1m, 282k in), Neto 6.6m. GW9 deadline 31 Oct 11:00.
+- `fpl transfers --gw 9 --horizon 4` (lgbm_xp, bank 0.1, 1 free): best single transfer Pedro -> Evanilson
+  (net 195.8 vs 175.7 hold); predicted GW9-12 points Evanilson 25.6, Neto 25.6, Jackson 24.4 (flat
+  persistence, so blind to fixtures). 3-transfer plan with 8-pt hit includes Jackson.
+- Fixtures GW9-14: mean FDR equal (about 2.67); GW15 Evanilson Arsenal (A, FDR 5) vs Jackson Coventry
+  (A, 2). Opponents' goals conceded/game GW9-14: Jackson 1.69, Evanilson 1.19 (about 8 matches each).
+- Career splits by opponent tier (top7 / mid / bottom6 of that season's table, appearances only):
+  Evanilson 3.40 / 3.44 / 4.29 pts per game (n 25/27/21); Jackson 4.12 / 3.92 / 4.05 (n 26/24/20).
+  Jackson's goals per game vs top 7 0.42 vs 0.20; samples small, differences within noise.
+- Outcome: advice was Pedro out now; Evanilson now / Jackson around GW11-12 is reasonable. Not executed
+  by this repo; the user decides.
+
+## 2026-10-27: Is vaastav `xp` recorded before the deadline? (branch feat/xp-timing)
+**Evidence says no, at least partly; magnitude unknown.**
+- *Haul test* (single-fixture players, 2020-21..2026-27, n=1512 with pts >= 10): `xp_g - xp_{g-1}` =
+  +2.80 and `xp_{g+1} - xp_g` = -0.36, i.e. the jump from a haul is already in `xp_g`. The
+  trusted live `ep` behaves the opposite way: GW8 haulers (n=15) went from the frozen pre-deadline
+  `ep` (GW8) to `ep_next` (GW9, snapshot 3) by +1.83. Blankers (<=1 pt): -0.20 / +0.02 in vaastav, +0.03 live.
+- *Absence test:* regular starters (mins_per_fix_5 >= 60) who played 0 minutes had `xp` <= 0.5 in
+  45-57% of cases (2020-26) vs 3-6% for those who played; live frozen `ep` GW8: 36% (n=22) vs 3%.
+  Not conclusive: many absences are known injuries.
+- *Leak-free proxy:* `xp_prev` (new dataset column: per-fixture `xp` of the player's latest earlier GW with
+  an `xp`; `fpl backtest --lag-xp`). Captured fraction (`--model --captured --step 0`, 2022-23 /
+  2023-24 / 2024-25): fpl_xp 0.679 / 0.629 / 0.667 -> fpl_xp_prev 0.374 / 0.331 / 0.370 (= rolling_mean_5
+  0.390 / 0.334 / 0.376); lgbm_xp 0.770 / 0.805 / 0.833 -> lgbm_xp_prev 0.419 / 0.381 / 0.415 (= lgbm
+  0.418 / 0.374 / 0.420). Last GW's `xp` adds nothing, as a stale forecast would not.
+- *Counter-evidence that the leak may be small:* live frozen `fpl_ep` captured 0.607 (GW8 fresh) /
+  0.566 vs backtest `fpl_xp` 0.63-0.68; live `lgbm_xp(ep)` 0.828 (GW8) vs backtest 0.77-0.83. Two
+  gameweeks, noise +-0.03/GW, so this neither clears nor convicts `xp`.
+- **Consequence:** absolute backtest numbers for `fpl_xp` / `lgbm_xp` / planner (74-85 pts/GW) cannot be
+  trusted as deadline-available performance; `lgbm` (no `xp`) and `rolling_mean_5` are leak-free.
+  Comparisons between policies fed the same `xp` are still fair relative to each other. Decide on
+  `ep`-as-`xp` only with live `ep` history (more GWs).
+- Code: `backtest.load_dataset` adds `xp_prev` (not a required column); `LightGBMPredictor(xp_column=)`;
+  `fpl backtest --lag-xp`. New test `test_xp_prev_is_the_latest_earlier_xp_per_fixture...`; 87 pass.
 
 ## 2026-10-27: Horizon-aware predictions (branch feat/next-task)
 - **New `fpl.horizon`**: `HorizonPredictor(h, use_xp)` predicts the points of a fixture h GWs after
