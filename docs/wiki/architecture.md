@@ -14,8 +14,9 @@ All code is in `src/fpl/`; tests are in `tests/` (in-memory DuckDB, mocked HTTP,
 | `model.py` | `LightGBMPredictor` (`lgbm`, `lgbm_xp` via `model_predictors()`), extra `model`; `fpl backtest --model` |
 | `planner.py` | Transfer planner (below) |
 | `planbacktest.py` | Season-long planner backtest (below) |
+| `replay.py` | Real free-transfer / chip history from stored entry data (below) |
 | `live.py` | Features for unplayed live-season fixtures (below) |
-| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick`, `blind-score`, `transfers`, `backtest-planner` (global `--db`, default `data/processed/fpl.duckdb`) |
+| `cli.py` | `fpl snapshot`, `history`, `import-history`, `entry`, `backtest`, `blind-pick`, `blind-score`, `transfers`, `backtest-planner`, `replay` (global `--db`, default `data/processed/fpl.duckdb`) |
 
 ## features.py
 Features for a row in gameweek G use only gameweeks strictly before G, so both fixtures of a DGW
@@ -66,6 +67,14 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
 - `score_blind(con, frozen)` / `fpl blind-score --gw N`: achieved vs hindsight-ceiling points and
   captured fraction per predictor (`fresh`, and `entry` if present); needs the GW finished in the
   latest snapshot and its `element_history` rows.
+
+## replay.py
+- `free_transfers(history)`: free transfers going into each GW, rebuilt from recorded transfer counts
+  (the API does not give them): bank unused (cap 5), +1 per GW, chip week (wildcard / free hit) neither
+  uses nor adds one, GW1 = initial squad. `replay` checks it against recorded `event_transfers_cost`
+  (all 8 GW of 2026-27 match). `next_free`, `chips_left(history, gw)` (one of each chip per half,
+  GW1-19 / 20-38), `load_history(con, entry_id)`.
+- `fpl replay` prints the table; `fpl transfers` now defaults `--free` to `next_free` and lists chips left.
 
 ## planner.py
 - `plan_transfers(players, points, squad, bank=, free_transfers=1, max_transfers=3, discount=1.0,
