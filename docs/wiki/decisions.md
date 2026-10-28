@@ -35,3 +35,5 @@
 - **Horizon models are opt-in.** Per-horizon LightGBM (`fpl.horizon`) lowers MAE vs persistence
   (h3 1.121 vs 1.175, 2024-25) but did not improve planner totals (worse on 2024-25), so the
   planner keeps persistence by default.
+- **LightGBM defaults kept.** A 7-variant sweep (rate, rounds, leaves, min_data, l2, huber) moved
+  captured fraction by <= 0.011 on 2022-25; not distinguishable from noise.
