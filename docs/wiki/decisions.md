@@ -37,6 +37,13 @@
   planner keeps persistence by default.
 - **LightGBM defaults kept.** A 7-variant sweep (rate, rounds, leaves, min_data, l2, huber) moved
   captured fraction by <= 0.011 on 2022-25; not distinguishable from noise.
+- **Component models and lagged rates are not adopted.** Captured fraction on 2022-25 (leak-free):
+  lgbm 0.400 mean vs comp_x 0.402; per-season differences within +-0.03 noise. Code reverted;
+  `lgbm` stays the leak-free model. Lever left is news, not form (task log 2026-10-28).
+- **Chip timing: no clever rule yet.** Backtest (2023-25): waiting for the best predicted gain within 6 or
+  19 GWs (+23..+44 per season) is not distinguishable from playing the chip at once (+31 / +32);
+  later-GW predictions are persistence x fixture count, which cannot see much. Keep the chips as an
+  option in the planner; decide timing by hand with `fpl transfers --chips --horizon 8`.
 - **`xp` is suspect; `xp_prev` is the leak-free check.** vaastav `xp` of a gameweek appears to include
   that gameweek's result (haul test, task log 2026-10-27). Report `lgbm` and `lgbm_xp` (and `xp_prev`
   variants via `--lag-xp`) together; never quote `lgbm_xp` / planner totals as realistic.

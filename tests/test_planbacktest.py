@@ -12,6 +12,8 @@ from fpl.planbacktest import (
     GwInput,
     Policy,
     autosub_points,
+    chip_gains,
+    chip_week_points,
     horizon_points,
     next_free_transfers,
     season_inputs,
@@ -188,3 +190,53 @@ def test_horizon_points_prefers_ahead_predictions_over_persistence():
     pts = horizon_points(gws, 0, 3, {16: 6.0})
     assert pts[1] == {16: 2.5}  # model-based
     assert pts[2][16] == 6.0  # persistence beyond the supplied horizon
+
+
+# ------------------------------------------------------------------------------------- chips
+
+
+def test_chip_gains_are_captain_points_and_bench_points():
+    squad = list(range(1, 16))
+    pts = [{i: 3.0 for i in squad} | {5: 7.0, 1: 1.0}]
+    g = chip_gains(squad, INFO, pts, ["3xc", "bboost"])
+    assert g["3xc"] == [7.0]
+    # the bench is the weaker keeper (player 1, 1.0) and three outfielders at 3.0
+    assert g["bboost"] == [pytest.approx(1.0 + 3 * 3.0)]
+
+
+def test_chip_week_points():
+    squad, xi = list(range(1, 16)), list(range(1, 12))
+    gw = GwInput(("s", 1), {i: 2.0 for i in squad}, {i: 1 for i in squad}, PRICE,
+                 {i: 2.0 for i in squad} | {5: 10.0})  # fmt: skip
+    # triple captain: base (XI + captain doubled) plus the captain once more
+    assert chip_week_points("3xc", 30.0, 0, squad, xi, 5, gw) == 40.0
+    # bench boost: all 15 once (14 x 2 + 10) plus the captain's extra, less the hit
+    assert chip_week_points("bboost", 30.0, 4, squad, xi, 5, gw) == 14 * 2 + 10 + 10 - 4
+    # captain who did not play: the vice-captain (best predicted starter who played) takes it
+    gw2 = GwInput(gw.key, {i: float(i) for i in squad}, gw.fixtures, PRICE, gw.actual,
+                  minutes={i: 90 for i in squad if i != 5})  # fmt: skip
+    assert chip_week_points("3xc", 0.0, 0, squad, xi, 5, gw2) == 2.0 * 0 + gw.actual[11]
+
+
+def test_triple_captain_is_saved_for_the_double_gameweek():
+    flat = {i: 1 for i in range(1, 16)}
+    gws = [
+        _gw(1, {5: 3.0}), _gw(2, {5: 3.0}),
+        _gw(3, {5: 6.0}, fixtures=flat | {5: 2}),  # 5 plays twice, so the same rate scores 6
+        _gw(4, {5: 3.0}),
+    ]  # fmt: skip
+    start = _start()
+    hold = simulate(gws, INFO, HOLD, start=start)
+    chip = simulate(gws, INFO, Policy("c", chips=("3xc",), chip_window=6), start=start)
+    assert [r.chip for r in chip.results] == [None, None, "3xc", None]
+    assert chip.total - hold.total == pytest.approx(6.0)  # the captain's points, once more
+    # bench boost has the same shape and is also played at most once per half
+    both = simulate(gws, INFO, Policy("c", chips=("3xc", "bboost")), start=start)
+    assert sum(r.chip is not None for r in both.results) == 2
+    assert {r.chip for r in both.results} - {None} == {"3xc", "bboost"}
+
+
+def test_unused_chip_is_forced_in_the_last_gameweek_of_the_half():
+    gws = [_gw(r, {5: 3.0 + (3 - r)}) for r in (1, 2, 3)]  # decaying: "now" is best at GW1
+    run = simulate(gws, INFO, Policy("c", chips=("3xc",), chip_min=100.0), start=_start())
+    assert [r.chip for r in run.results] == [None, None, "3xc"]  # min never met; forced at the end

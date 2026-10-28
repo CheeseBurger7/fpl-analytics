@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from fpl.optimizer import Player
-from fpl.planner import best_plan, plan_transfers
+from fpl.planner import best_plan, evaluate_chips, plan_transfers
 
 # 15-man squad (ids 1-15: 2 GK, 5 DEF, 5 MID, 3 FWD), one club each id % 5, price 50 each,
 # plus bench-quality alternatives 16 (MID, strong) and 17 (MID, strong but pricey).
@@ -66,3 +66,66 @@ def test_best_plan_margin_ignores_marginal_extra_transfers():
 def test_squad_must_be_in_pool():
     with pytest.raises(ValueError):
         plan_transfers(_pool(), [{}], range(100, 115))
+
+
+# ------------------------------------------------------------------------------------- chips
+
+
+def test_triple_captain_adds_the_captains_points_in_the_chosen_gameweek():
+    gw0, gw1 = _points({}), _points({5: 9.0})
+    base = plan_transfers(_pool(), [gw0, gw1], range(1, 16), max_transfers=0)[0]
+    tc = plan_transfers(_pool(), [gw0, gw1], range(1, 16), max_transfers=0, chip="3xc",
+                        chip_gw=1)[0]
+    assert tc.captain[1] == 5 and tc.chip == "3xc" and tc.chip_gw == 1
+    assert tc.net - base.net == pytest.approx(9.0)
+    early = plan_transfers(_pool(), [gw0, gw1], range(1, 16), max_transfers=0, chip="3xc",
+                           chip_gw=0)[0]
+    assert early.net - base.net == pytest.approx(3.0)  # only a 3-point captain that week
+
+
+def test_bench_boost_counts_the_bench():
+    pts = _points({})
+    base = plan_transfers(_pool(), [pts], range(1, 16), max_transfers=0)[0]
+    bb = plan_transfers(_pool(), [pts], range(1, 16), max_transfers=0, chip="bboost")[0]
+    bench = sum(pts[i] for i in range(1, 16)) - sum(pts[i] for i in base.xi[0])
+    assert bench >= 4.0  # four bench players of at least 1 point each
+    assert bb.net - base.net == pytest.approx(bench * 0.998, abs=1e-6)
+
+
+def test_free_hit_uses_a_different_squad_for_one_gameweek_without_a_hit():
+    weak = {9: 1.0, 16: 8.0, 17: 9.0}
+    pts = [_points(weak), _points(weak)]
+    plans = plan_transfers(_pool(), pts, range(1, 16), bank=40, free_transfers=0, max_transfers=0,
+                           chip="freehit", chip_gw=1)
+    (p,) = plans
+    assert p.hit == 0 and {16, 17} <= set(p.chip_squad)
+    assert set(p.squad) == set(range(1, 16))  # the real squad is untouched
+    assert 16 not in p.xi[0] and 16 in p.xi[1]  # only the free-hit gameweek uses the new squad
+    first = plan_transfers(_pool(), pts, range(1, 16), bank=40, max_transfers=3,
+                           chip="freehit", chip_gw=0)
+    assert len(first) == 1 and first[0].transfers == 0  # nothing to transfer in a free-hit week
+
+
+def test_wildcard_squad_applies_from_its_gameweek_onwards():
+    weak = {9: 1.0, 16: 8.0, 17: 9.0}
+    pts = [_points(weak)] * 3
+    (p,) = plan_transfers(_pool(), pts, range(1, 16), bank=40, free_transfers=0, max_transfers=0,
+                          chip="wildcard", chip_gw=1)
+    assert 16 not in p.xi[0] and 16 in p.xi[1] and 16 in p.xi[2]
+    assert p.hit == 0
+
+
+def test_evaluate_chips_ranks_options_by_gain_over_the_chip_free_plan():
+    pts = [_points({}), _points({5: 20.0})]
+    base, options = evaluate_chips(_pool(), pts, range(1, 16), ("3xc", "bboost"), max_transfers=0)
+    assert base.chip is None
+    assert [o.gain for o in options] == sorted((o.gain for o in options), reverse=True)
+    assert (options[0].chip, options[0].gw) == ("3xc", 1)
+    assert all(o.gain > 0 for o in options)
+
+
+def test_bad_chip_arguments_are_rejected():
+    with pytest.raises(ValueError):
+        plan_transfers(_pool(), [{}], range(1, 16), chip="nope")
+    with pytest.raises(ValueError):
+        plan_transfers(_pool(), [{}], range(1, 16), chip="3xc", chip_gw=1)

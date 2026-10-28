@@ -86,6 +86,9 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
   `rolling_mean_5` or `fpl_ep` per gameweek via `live_features`.
   `lgbm_xp` feeds `ep` as `xp` for the first GW (`live.ep_model_predictions`) and uses the first
   GW's per-fixture prediction x fixture count for later GWs.
+- Chips: `plan_transfers(chip="3xc"|"bboost"|"freehit"|"wildcard", chip_gw=g)` plays one chip in horizon
+  gameweek g (free hit / wildcard add an alternative squad `Plan.chip_squad`); `evaluate_chips` ranks
+  every chip x gameweek by gain over the best chip-free plan. `fpl transfers --chips` prints it.
 - `fpl transfers --gw N` (default predictor `lgbm_xp`) reads the squad/bank from `entry_picks` / `entry_gameweeks` (latest GW <= N).
 
 ## planbacktest.py
@@ -100,6 +103,9 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
 - `season_inputs(data, predictors, season, con)`: fits each predictor once per season, shared
   eligible pool, prices carried over blanks, rounds without any forecast skipped.
   `ceiling_points` = hindsight fresh squad (context). CLI: `fpl backtest-planner`.
+- Chips: `Policy(chips=("3xc", "bboost"), chip_min, chip_window)`, `PLANNER_CHIPS`; `chip_gains`,
+  `chip_week_points`, `chip_log`; one of each per half (GW1-19 / 20-38). `fpl backtest-planner --chips`.
+  Free hit / wildcard are planner-only.
 
 ## Commands
 ```
