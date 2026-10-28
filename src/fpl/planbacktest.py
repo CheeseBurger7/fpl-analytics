@@ -11,6 +11,14 @@ results of g..g+j-1. Instead a player's predicted points for g+j are his latest 
 prediction times the number of fixtures he has in g+j (the schedule is known in advance), i.e.
 persistence. ``horizon=1`` needs no such assumption.
 
+Chips (``Policy.chips``, bench boost and triple captain only; they leave the squad alone): one of
+each per half (GW1-19, GW20-38). Before each gameweek the policy compares, for the squad it has just
+chosen, the predicted gain of playing the chip now with playing it in each later gameweek of the
+window (to the end of the half) and plays it now if now is the best and the gain is at least
+``chip_min``, or in the last gameweek of the half rather than lose it. Triple captain adds the
+captain's points again; bench boost adds the points of every bench player who played. Free hit and
+wildcard are not simulated (they need predictions of a whole second squad).
+
 ``simulate`` is pure (no database); ``season_inputs`` builds its inputs from the walk-forward data.
 """
 
@@ -31,6 +39,7 @@ from fpl.optimizer import (
     Player,
     Selection,
     optimize_squad,
+    pick_lineup,
     score_selection,
 )
 from fpl.planner import best_plan, plan_transfers
@@ -43,12 +52,17 @@ class Policy:
     name: str
     max_transfers: int = 0  # 0 = never transfer
     margin: float = 1.0  # ``best_plan`` margin
+    chips: tuple[str, ...] = ()  # subset of ("3xc", "bboost")
+    chip_min: float = 0.0  # least predicted gain to play a chip before the end of its half
+    chip_window: int = 6  # gameweeks looked ahead when timing a chip
 
 
 HOLD = Policy("hold")
 PLANNER = Policy("planner", max_transfers=3, margin=1.0)
 PLANNER_HITS = Policy("planner_hits", max_transfers=3, margin=0.0)
+PLANNER_CHIPS = Policy("planner_chips", max_transfers=3, margin=1.0, chips=("3xc", "bboost"))
 DEFAULT_POLICIES = (HOLD, PLANNER, PLANNER_HITS)
+HALF_END = (19, 38)  # last gameweek of each chip half
 
 
 @dataclass(frozen=True)
@@ -76,6 +90,7 @@ class GwResult:
     into: tuple[int, ...]
     free_transfers: int  # available before this gameweek's transfers
     bank: int  # tenths, after transfers
+    chip: str | None = None
 
 
 @dataclass
@@ -177,6 +192,82 @@ def start_squad(first: GwInput, info: Mapping[int, tuple[int, int]]) -> tuple[Se
     return sel, BUDGET - sel.cost
 
 
+def chip_gains(
+    squad: Sequence[int],
+    info: Mapping[int, tuple[int, int]],
+    points: Sequence[Mapping[int, float]],
+    available: Sequence[str],
+) -> dict[str, list[float]]:
+    """Predicted gain per horizon gameweek of each chip on a fixed squad: the captain's points for
+    triple captain, the bench's for bench boost (XI and captain picked from the same points)."""
+    out: dict[str, list[float]] = {c: [] for c in available}
+    for pts in points:
+        if "3xc" in available:
+            out["3xc"].append(max((pts.get(i, 0.0) for i in squad), default=0.0))
+        if "bboost" in available:
+            players = [Player(i, *info[i], 0, pts.get(i, 0.0)) for i in squad]
+            sel = pick_lineup(players, squad)
+            out["bboost"].append(sum(pts.get(i, 0.0) for i in sel.bench))
+    return out
+
+
+def _played(gw: GwInput):
+    return (lambda i: True) if gw.minutes is None else (lambda i: gw.minutes.get(i, 0) > 0)
+
+
+def _effective_captain(xi: Sequence[int], captain: int, gw: GwInput) -> int | None:
+    """The captain, or the vice-captain (best predicted starter who played) if he did not play."""
+    played = _played(gw)
+    if played(captain):
+        return captain
+    return max((i for i in xi if played(i)), key=lambda i: gw.predicted.get(i, 0.0), default=None)
+
+
+def chip_week_points(
+    chip: str, base: float, hit: int, squad: Sequence[int], xi: Sequence[int], captain: int,
+    gw: GwInput,
+) -> float:
+    """Actual points of a gameweek played with ``chip``. ``base`` is the normal score after the
+    hit. Triple captain adds the (effective) captain's points once more; bench boost scores every
+    squad member who played (so no auto-subs) plus the captain's bonus, less the hit."""
+    played = _played(gw)
+    cap = _effective_captain(xi, captain, gw)
+    cap_pts = gw.actual.get(cap, 0.0) if cap is not None else 0.0
+    if chip == "3xc":
+        return base + cap_pts
+    return sum(gw.actual.get(i, 0.0) for i in squad if played(i)) + cap_pts - hit
+
+
+def _half(gw: GwInput) -> int:
+    return 0 if gw.key[1] <= HALF_END[0] else 1
+
+
+def _choose_chip(
+    policy: Policy,
+    gws: Sequence[GwInput],
+    i: int,
+    squad: Sequence[int],
+    info: Mapping[int, tuple[int, int]],
+    per_fixture: Mapping[int, float],
+    used: set[tuple[int, str]],
+) -> str | None:
+    """Chip to play in gameweek i (or None): see the module docstring for the rule."""
+    half = _half(gws[i])
+    left = [c for c in policy.chips if (half, c) not in used]
+    if not left:
+        return None
+    end = i
+    while end + 1 < len(gws) and _half(gws[end + 1]) == half:
+        end += 1  # last gameweek of this half in the data
+    window = min(policy.chip_window, end - i + 1)
+    gains = chip_gains(squad, info, horizon_points(gws, i, window, per_fixture), left)
+    now = {c: g[0] for c, g in gains.items()}
+    ready = [c for c in left if now[c] >= max(gains[c]) and now[c] >= policy.chip_min]
+    if not ready and i == end:
+        ready = left  # use it or lose it
+    return max(ready, key=lambda c: now[c]) if ready else None
+
+
 def simulate(
     gws: Sequence[GwInput],
     info: Mapping[int, tuple[int, int]],
@@ -197,6 +288,7 @@ def simulate(
     free = 1
     per_fixture: dict[int, float] = {}
     run = SeasonRun(policy.name)
+    used: set[tuple[int, str]] = set()  # (half, chip) already played
     for i, gw in enumerate(gws):
         for p, v in gw.predicted.items():
             n = gw.fixtures.get(p, 0)
@@ -219,9 +311,14 @@ def simulate(
             bench = [i for i in plan.squad if i not in set(plan.xi[0])]
             points = autosub_points(plan.xi[0], plan.captain[0], bench, info_, gw.predicted,
                                     gw.actual, gw.minutes) - plan.hit  # fmt: skip
+        chip = _choose_chip(policy, gws, i, plan.squad, info, per_fixture, used)
+        if chip:
+            used.add((_half(gw), chip))
+            points = chip_week_points(chip, points, plan.hit, plan.squad, plan.xi[0],
+                                      plan.captain[0], gw)  # fmt: skip
         buy = {i: buy[i] if i in buy else gw.price[i] for i in plan.squad}
         run.results.append(GwResult(gw.key, points, plan.hit, plan.transfers, plan.out, plan.into,
-                                    free, plan.bank))  # fmt: skip
+                                    free, plan.bank, chip))  # fmt: skip
         squad, bank = set(plan.squad), plan.bank
         free = next_free_transfers(free, plan.transfers)
     return run
@@ -353,3 +450,8 @@ def summarize(runs: Sequence[SeasonRun]) -> list[dict[str, object]]:
          "per_gw": r.total / len(r.results), "hit_pts": r.hits, "transfers": r.transfers}
         for r in runs
     ]  # fmt: skip
+
+
+def chip_log(run: SeasonRun) -> str:
+    """'3xc GW12, bboost GW19' for the chips a run played."""
+    return ", ".join(f"{r.chip} GW{r.key[1]}" for r in run.results if r.chip) or "none"

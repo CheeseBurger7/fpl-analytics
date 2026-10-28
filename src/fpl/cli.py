@@ -15,7 +15,7 @@ from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, 
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
 from fpl.live import live_features, mean_captured, player_pool, predictions, score_blind
 from fpl.optimizer import CapturedFractionHook, Player, optimize_squad, pick_lineup
-from fpl.planner import best_plan, horizon_predictions, plan_transfers
+from fpl.planner import best_plan, evaluate_chips, horizon_predictions, plan_transfers
 from fpl.replay import chips_left, format_replay, load_history, next_free, replay
 from fpl.store import Store
 
@@ -93,6 +93,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--horizon", type=int, default=4, help="gameweeks to look ahead")
     t.add_argument("--free", type=int, default=None,
                    help="free transfers available (default: derived from the stored entry history)")
+    t.add_argument("--chips", action="store_true",
+                   help="also try every chip left in every gameweek of the horizon (slow; "
+                        "use --horizon 6+ and --max-transfers 1)")
     t.add_argument("--max-transfers", type=int, default=3)
     t.add_argument("--discount", type=float, default=1.0, help="weight per later gameweek")
     t.add_argument("--predictor", default="lgbm_xp",
@@ -104,6 +107,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="repeatable; default both")
     pb.add_argument("--horizon", type=int, default=1, help="gameweeks to look ahead (1 = no leak)")
     pb.add_argument("--discount", type=float, default=1.0)
+    pb.add_argument("--chips", action="store_true",
+                    help="add a policy that plays triple captain and bench boost once per half")
     pb.add_argument("--horizon-models", action="store_true",
                     help="lgbm_xp uses per-horizon models for later gameweeks, not persistence")
     pb.add_argument("--min-history", type=int, default=5)
@@ -144,7 +149,9 @@ def planner_backtest(store: Store, args: argparse.Namespace) -> None:
     from fpl.backtest import ColumnPredictor
     from fpl.planbacktest import (
         DEFAULT_POLICIES,
+        PLANNER_CHIPS,
         ceiling_points,
+        chip_log,
         season_inputs,
         simulate,
         start_squad,
@@ -170,10 +177,14 @@ def planner_backtest(store: Store, args: argparse.Namespace) -> None:
               f"({ceiling / len(first):.1f}/GW, fresh squad each GW)")  # fmt: skip
         for name, gws in inputs.items():
             start = start_squad(gws[0], info)
+            policies = (*DEFAULT_POLICIES, PLANNER_CHIPS) if args.chips else DEFAULT_POLICIES
             runs = [simulate(gws, info, pol, horizon=args.horizon, discount=args.discount,
-                             start=start) for pol in DEFAULT_POLICIES]  # fmt: skip
+                             start=start) for pol in policies]  # fmt: skip
             print(f"-- predictor {name}")
             print(format_summary(summarize(runs)), flush=True)
+            for run in runs:
+                if run.policy == PLANNER_CHIPS.name:
+                    print(f"   chips played: {chip_log(run)}", flush=True)
 
 
 def suggest_transfers(store: Store, args: argparse.Namespace, entry_id: int) -> None:
@@ -211,10 +222,30 @@ def suggest_transfers(store: Store, args: argparse.Namespace, entry_id: int) -> 
         mark = "  <-- best" if p is best else ""
         print(f"{p.transfers} transfers: net {p.net:6.1f} (gross {p.gross:6.1f}, hit {p.hit}), "
               f"out [{_names(names, p.out)}] in [{_names(names, p.into)}]{mark}")  # fmt: skip
-    print(f"chips left: {', '.join(chips_left(history, args.gw)) or 'none'} "
-          "(a chip play is not planned here)")  # fmt: skip
+    print(f"chips left: {', '.join(chips_left(history, args.gw)) or 'none'}"
+          + ("" if args.chips else " (add --chips to evaluate them)"))
     print(f"{plans[0].net:.1f} for the unchanged squad; best gains {best.net - plans[0].net:+.1f}")
     print(f"captain GW{args.gw}: {names[best.captain[0]]}")
+    if args.chips:
+        left = chips_left(history, args.gw)
+        base, options = evaluate_chips(
+            pool, pts, squad, left, bank=bank or 0, free_transfers=args.free,
+            max_transfers=args.max_transfers, discount=args.discount,
+        )  # fmt: skip
+        print(f"-- chips vs the best chip-free plan (net {base.net:.1f}); gain, GW played:")
+        for chip in left:
+            mine = [o for o in options if o.chip == chip]
+            for o in mine[:3]:
+                extra = ""
+                if o.plan.chip_squad:
+                    swaps = set(o.plan.chip_squad) - set(o.plan.squad)
+                    extra = f"  squad adds [{_names(names, tuple(sorted(swaps)))}]"
+                elif o.plan.out:
+                    extra = (f"  with out [{_names(names, o.plan.out)}] "
+                             f"in [{_names(names, o.plan.into)}]")
+                print(f"  {chip:9} GW{args.gw + o.gw}: {o.gain:+6.1f}{extra}")
+        if not left:
+            print("  no chips left")
 
 
 def _names(names: dict[int, str], ids: tuple[int, ...]) -> str:

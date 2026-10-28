@@ -18,16 +18,18 @@
 | #18 | LightGBM tuning sweep: defaults kept |
 | (branch feat/xp-timing) | `xp` timing investigation: `xp` leaks; `xp_prev` leak-free proxy |
 | (branch feat/real-replay) | `fpl.replay` + `fpl replay`: real free-transfer / chip history; `fpl transfers` derives `--free` |
+| (branch feat/chips-planner) | Chips in the planner: 3xc / bboost / freehit / wildcard in `plan_transfers`, `fpl transfers --chips`, chip policy in the planner backtest (+8-11 pts per chip; timing no better than early) |
+| (not merged) | Component models + lagged goal/assist/xG rates tried and reverted: no gain vs `lgbm` |
 | #17 | `fpl.horizon` per-horizon models (better MAE, no planner gain; opt-in); LightGBM tuning sweep: defaults kept |
 | #16 | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
 
 How to produce a GW's predictions / lineup / transfers: [running-predictions.md](running-predictions.md).
 (A `fpl lineup` / `fpl squad` CLI command would replace the Python snippets there; not built.)
 
-## Next: chips in the planner (start here)
+## Next: collect `ep`, fixture-aware chip timing (start here)
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
-1. Model chips (wildcard, free hit, bench boost, triple captain) in the planner; `fpl.replay.chips_left`
-   gives availability (bench boost is the only first-half chip left for the 2026-27 entry).
+1. Chips are modelled (planner + `fpl transfers --chips` + backtest policy). Open: fixture-aware
+   later-GW predictions so chip timing can beat "play early"; free hit / wildcard in the backtest.
    **`xp` timing was investigated 2026-10-27: vaastav `xp` very likely partly leaks the GW result**
    (task-log). Treat `fpl_xp` / `lgbm_xp` / planner absolute numbers as optimistic.
 Standing chores (do whenever a GW passes):
@@ -41,9 +43,10 @@ verifying `xp` timing (absolute backtest points of 74-83/GW are optimistic). Rea
 history and the squad replay are done (2026-10-28).
 
 ## Later
-- Chips (wildcard, free hit, bench boost, triple captain), multi-step transfer plans, live selling
-  prices from `entry` data (the backtest already models them).
-- Lagged xG / xA / xGI features (xG only from 2022-23). ICT done 2026-10-27: no gain.
+- Multi-step transfer plans, live selling prices from `entry` data (the backtest already models them).
+- Lagged goal / assist / xG features and component models: tried 2026-10-28, no gain, code reverted.
+  ICT done 2026-10-27: no gain. Untried: availability news as a feature (needs a stored history of
+  `chance_of_playing`; snapshots have it from now on), RF / Ridge baselines, ensemble.
 - Differentials, explorer.
 - Fix mid-season-mover team features (see data.md).
 

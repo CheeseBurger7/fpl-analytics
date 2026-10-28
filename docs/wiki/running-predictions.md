@@ -36,6 +36,9 @@ fpl transfers --gw N --horizon 1 --max-transfers 1     # this-GW only
 - The squad is the latest stored picks (<= N). After a transfer already made for N, the unchanged-squad
   line is stale; in the plan, treat the matching transfer as done and rerun from the new squad with
   `--free 0` (see the snippet below).
+- `--chips` also evaluates every chip you have left in every horizon GW (use `--horizon 6` or more and
+  `--max-transfers 1`, about a minute). Gains are vs the best chip-free plan and ignore what the chip
+  could do later, so compare chips with each other and look at double / blank weeks yourself.
 - A hit is worth it only if net beats the 0-transfer line by clearly more than noise (about 1-2 pts).
 
 ## 4. Lineup and captain for GW N

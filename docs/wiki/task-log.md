@@ -1,11 +1,75 @@
 # Task log (newest first)
 
-## NEXT TASK (written 2026-10-28): chips in the planner
+## NEXT TASK (written 2026-10-28): collect `ep`, then fixture-aware chip timing
 Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` timing entry below.
-1. Model chips (wildcard, free hit, bench boost, triple captain) in `plan_transfers` / the planner
-   backtest; `fpl.replay.chips_left` already says which are available.
-2. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The
-   live `ep` track record is the only clean arbiter for `xp` (see below).
+1. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The
+   live `ep` track record is the only clean arbiter for `xp` (see below) and the remaining model lever
+   (news-type input, see the components entry).
+2. Chips: planner / backtest support is in (entry below). Open: (a) fixture-aware later-GW predictions
+   (persistence x fixture count cannot rank blank / double weeks well, chip timing did not beat "play
+   early" in the backtest); (b) free hit / wildcard in the season backtest; (c) selling-price-aware
+   chip squads.
+
+## 2026-10-28: Chips in the planner (branch feat/chips-planner)
+- `plan_transfers(chip=, chip_gw=)`: `3xc` (captain tripled in one horizon GW), `bboost` (whole squad
+  scores that GW), `freehit` (alternative squad y, same budget, that GW only), `wildcard` (y from that GW
+  on). A free hit / wildcard in the first GW returns only the 0-transfer plan. `Plan` gains `chip`,
+  `chip_gw`, `chip_squad`. `evaluate_chips(...)` tries every chip x horizon GW and returns options sorted
+  by gain over the best chip-free plan. 6 tests in `tests/test_planner.py`.
+- `fpl transfers --chips` (use `--horizon 6 --max-transfers 1`; ~1 min, ~23 s for all 4 chips at
+  horizon 4). GW9 live, horizon 6 (lgbm_xp, GW8 squad): bench boost +4.2 predicted points in every GW
+  GW9-14; all four chips at horizon 4: wildcard GW9 +69.3 (17.3/GW), free hit +17.3, triple captain
+  +6.4, bench boost +4.2. Gains are flat across GWs because later-GW predictions are persistence x
+  fixture count and GW9-14 has no double / blank GWs, so this says nothing about timing yet.
+  The wildcard / free hit gains mostly show the flat model preferring cheap in-form attackers.
+- Season backtest (`fpl backtest-planner --chips`, new `planner_chips` policy; `planbacktest.chip_gains`,
+  `chip_week_points`): triple captain and bench boost once per half (GW1-19 / 20-38), timing rule =
+  play now if the predicted gain now is the best in the window to the end of the half (`chip_window`
+  6) and >= `chip_min`, forced in the last GW of a half. Scored on actuals (BB = all squad members who
+  played, TC = effective captain once more). Free hit / wildcard are not simulated.
+  Total points vs `planner` (lgbm_xp, step 0): 2022-23 +34, 2023-24 +23, 2024-25 +44 (about +8-11 per
+  chip). Timing windows (2023-24 / 2024-25): window 1 (play at once) +31 / +32; 6 +23 / +44; 19 +27 / +44.
+  **Smart timing did not beat playing early** (differences within season noise), and chips were
+  mostly played in GW1-2 / GW20-25. Absolute numbers are optimistic (`xp` leak); the chip gain is
+  relative to the same-policy run without chips.
+- Caveats: gain from `evaluate_chips` is relative to no chip in this horizon and ignores the chip's
+  value later in the season; BB assumes every bench player plays (predicted points, no minutes risk).
+  104 tests pass, ruff clean.
+
+## 2026-10-28: Component models + lagged goal/assist/xG features (tried, reverted, never merged)
+Picked as the highest-leverage model idea from the model-family review (below); **no gain, so the
+code was discarded** (branch feat/minutes-model, never committed). Rebuild only if a news feature
+makes it worthwhile; the design is below.
+- New `fpl.components.ComponentPredictor`: six LightGBM models per player-fixture (P(plays), P(60+ min),
+  Poisson goals, Poisson assists, P(clean sheet), residual regressor for bonus / saves / conceded /
+  cards) combined with FPL's scoring values by position. New `features.EXTRA_COLUMNS` (goals, assists
+  per fixture over 5 / 10, cs / bonus / saves / xG / xA per fixture over 10, last-GW minutes), kept out
+  of `FEATURE_COLUMNS`; `COMPONENT_TARGETS` (`y_minutes`, `y_goals`, `y_assists`, `y_cs`, `y_other`,
+  which sum back to `target`) load into the dataset. `fpl backtest --components` adds `lgbm_x`
+  (lgbm + extras), `comp` (components, base features), `comp_x` (components + extras).
+- Leak-free walk-forward, `--step 0 --captured`, captured fraction 2022-23 / 2023-24 / 2024-25:
+  rolling_mean_5 0.388 / 0.330 / 0.372; **lgbm 0.415 / 0.370 / 0.416**; lgbm_x 0.402 / 0.371 / 0.416;
+  comp 0.400 / 0.354 / 0.430; comp_x 0.404 / 0.359 / 0.444. Means: lgbm 0.400, comp_x 0.402. Noise is
+  about +-0.03 per season, so none beats `lgbm`. MAE: 1.117 / 0.991 / 1.053 (lgbm) vs 1.093 / 0.979 /
+  1.050 (comp_x); Spearman +0.01 with the extras (lgbm_x 0.706 / 0.691 / 0.704 vs 0.693 / 0.679 / 0.692).
+  The extras help ranking slightly, the decomposition adds nothing measurable. Run took 6m47s.
+- Interpretation: the leak-free model is limited by the information, not the model form. Minutes already
+  enter through `mins_per_fix_*`, `start_rate_5`, `zero_min_rate_5`; what is missing is news (injury,
+  suspension, rotation, lineup), which vaastav history does not hold. The big `lgbm_xp` gap (0.76-0.82)
+  is `xp` carrying exactly that (and probably some leak).
+- Caveats: backtest-only (live shadow rows have no goals / assists / xG, so extras would be NaN for the
+  gap GWs). Implementation notes if rebuilt: `y_other` = `target` minus appearance (1 / 2), goals x
+  (6 GK/DEF, 5 MID, 4 FWD), 3 x assists, clean sheets x (4 GK/DEF, 1 MID); LightGBM `poisson` needs a
+  non-zero label sum; vaastav has position 5 (managers) in 2025-26.
+
+## Model-family review (2026-10-28, user's list, assessed; nothing built except components above)
+- XGBoost / CatBoost: skip (same family; the tuning sweep moved captured fraction <= 0.011; the only
+  categorical feature is position).
+- Random Forest / ExtraTrees, Ridge / Elastic Net / Poisson: only as cheap baselines or ensemble members;
+  expect between `rolling_mean_5` and `lgbm`.
+- Component models: tried above (and reverted), no gain on the same features.
+- Bayesian hierarchical: only useful once the planner uses variance (captain risk); not now.
+- LSTM / GRU / TFT: skip (data too small and noisy).
 
 ## 2026-10-28: GW9 forecast for the current squad (no code changes)
 - `fpl entry` (picks only to GW8, so the Pedro -> Evanilson move is not stored), then
