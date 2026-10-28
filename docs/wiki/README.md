@@ -9,6 +9,7 @@ Repo: github.com/CheeseBurger7/fpl-analytics (public, MIT). Local: `C:\Projects\
 | Page | Contents |
 |---|---|
 | [status.md](status.md) | What exists, what is next, open questions. **Start here.** |
+| [running-predictions.md](running-predictions.md) | How to run predictions, lineup and transfers for any upcoming GW (commands, steps) |
 | [architecture.md](architecture.md) | Modules, public functions, CLI, how data flows |
 | [data.md](data.md) | DuckDB tables, data gotchas, local data state |
 | [glossary.md](glossary.md) | Meaning of xp, ep, lgbm, MAE, Spearman, captured fraction; which metric to target |

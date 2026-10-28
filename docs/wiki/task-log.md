@@ -7,6 +7,25 @@ Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` 
 2. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The
    live `ep` track record is the only clean arbiter for `xp` (see below).
 
+## 2026-10-28: GW9 forecast for the current squad (no code changes)
+- `fpl entry` (picks only to GW8, so the Pedro -> Evanilson move is not stored), then
+  `fpl transfers --gw 9 --horizon 1 --max-transfers 1` (lgbm_xp, bank 0.1, 1 free): unchanged GW8 squad
+  43.9 predicted GW9 points; with Pedro -> Evanilson (the move made) 49.0; captain Evanilson. Bench boost
+  is the only chip left. Forward-looking, not a backtest: score it after GW9 with `fpl blind-score`.
+- Lineup (lgbm_xp, after Pedro -> Evanilson, 3-4-3): Raya; Konsa, Van Hecke, Muharemovic; Tavernier,
+  Palmer, Rogers, Gomez; Evanilson (C, 6.35), Haaland (6.09), Calvert-Lewin. Bench Gibbs-White,
+  Calafiori, Davis, Bentley.
+- Extra -4 transfer (bank 1.7, 0 free left): Gibbs-White -> Neto is 48.9 net vs 49.0 hold for GW9 alone
+  (not worth it), 207.6 vs 195.8 over GW9-12 (flat persistence, no fixtures). Two transfers (+ Calvert-Lewin
+  -> N.Jackson, -8): 216.8 over GW9-12.
+- Best fresh 15 (100m, same for horizon 1 and GW9-12): Suzuki, Verbruggen; Hill, De Cuyper, Gabriel,
+  Vuskovic, Konsa; Neto (C), Henderson, Mbeumo, Dewsbury-Hall, Iwobi; Evanilson, N.Jackson, Haaland. Cost
+  98.4m. Ignores selling prices / transfer cost.
+- New page [running-predictions.md](running-predictions.md): the recipe for any upcoming GW (these were
+  throwaway scripts; the snippets in the page are checked).
+- Caveats: `lgbm_xp` feeds `ep` as `xp` (xp-leak caveat applies to absolute numbers); one-GW point
+  forecasts carry large per-GW noise (backtest MAE per player-GW is about 1.2+ pts).
+
 ## 2026-10-28: Real free-transfer / chip history (branch feat/real-replay)
 - New `fpl.replay` + `fpl replay`: reconstructs free transfers per GW from `entry_gameweeks`
   (transfers, hit cost, active chip). Rule found by fitting the recorded costs: unused free transfers

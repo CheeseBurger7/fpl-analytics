@@ -21,6 +21,9 @@
 | #17 | `fpl.horizon` per-horizon models (better MAE, no planner gain; opt-in); LightGBM tuning sweep: defaults kept |
 | #16 | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
 
+How to produce a GW's predictions / lineup / transfers: [running-predictions.md](running-predictions.md).
+(A `fpl lineup` / `fpl squad` CLI command would replace the Python snippets there; not built.)
+
 ## Next: chips in the planner (start here)
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
 1. Model chips (wildcard, free hit, bench boost, triple captain) in the planner; `fpl.replay.chips_left`
