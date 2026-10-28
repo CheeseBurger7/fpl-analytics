@@ -16,6 +16,7 @@ from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry
 from fpl.live import live_features, mean_captured, player_pool, predictions, score_blind
 from fpl.optimizer import CapturedFractionHook, Player, optimize_squad, pick_lineup
 from fpl.planner import best_plan, horizon_predictions, plan_transfers
+from fpl.replay import chips_left, format_replay, load_history, next_free, replay
 from fpl.store import Store
 
 DEFAULT_DB = Path("data/processed/fpl.duckdb")
@@ -43,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--to", dest="last", default=LAST_COMPLETE_SEASON, help="last season")
     i.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
     i.add_argument("--refresh", action="store_true", help="re-download cached CSVs")
+
+    rp = sub.add_parser("replay", help="real free-transfer / chip history from stored entry data")
+    rp.add_argument("--entry-id", type=int, default=None, help="default $FPL_ENTRY_ID")
 
     e = sub.add_parser("entry", help="pull a manager's picks, history and transfers")
     e.add_argument(
@@ -87,7 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--gw", type=int, required=True, help="the gameweek about to start")
     t.add_argument("--entry-id", type=int, default=None, help="default $FPL_ENTRY_ID")
     t.add_argument("--horizon", type=int, default=4, help="gameweeks to look ahead")
-    t.add_argument("--free", type=int, default=1, help="free transfers available")
+    t.add_argument("--free", type=int, default=None,
+                   help="free transfers available (default: derived from the stored entry history)")
     t.add_argument("--max-transfers", type=int, default=3)
     t.add_argument("--discount", type=float, default=1.0, help="weight per later gameweek")
     t.add_argument("--predictor", default="lgbm_xp",
@@ -191,6 +196,9 @@ def suggest_transfers(store: Store, args: argparse.Namespace, entry_id: int) -> 
         "WHERE snapshot_id = ?", [sid]).fetchall()  # fmt: skip
     names = {r[0]: r[1] for r in info}
     pool = [Player(i, pos, team, cost, 0.0) for i, _, pos, team, cost in info]
+    history = [g for g in load_history(con, entry_id) if g.gameweek < args.gw]
+    if args.free is None:
+        args.free = next_free(history)
     pts = horizon_predictions(con, args.season, args.gw, args.horizon, args.predictor)
     plans = plan_transfers(
         pool, pts, squad, bank=bank or 0, free_transfers=args.free,
@@ -203,6 +211,8 @@ def suggest_transfers(store: Store, args: argparse.Namespace, entry_id: int) -> 
         mark = "  <-- best" if p is best else ""
         print(f"{p.transfers} transfers: net {p.net:6.1f} (gross {p.gross:6.1f}, hit {p.hit}), "
               f"out [{_names(names, p.out)}] in [{_names(names, p.into)}]{mark}")  # fmt: skip
+    print(f"chips left: {', '.join(chips_left(history, args.gw)) or 'none'} "
+          "(a chip play is not planned here)")  # fmt: skip
     print(f"{plans[0].net:.1f} for the unchanged squad; best gains {best.net - plans[0].net:+.1f}")
     print(f"captain GW{args.gw}: {names[best.captain[0]]}")
 
@@ -321,6 +331,15 @@ def main(argv: list[str] | None = None) -> int:
             if eid is None:
                 parser.error("entry id required (--entry-id or FPL_ENTRY_ID)")
             suggest_transfers(store, args, eid)
+        elif args.command == "replay":
+            env_id = os.environ.get("FPL_ENTRY_ID")
+            eid = args.entry_id or (int(env_id) if env_id else None)
+            if eid is None:
+                parser.error("entry id required (--entry-id or FPL_ENTRY_ID)")
+            history = load_history(store.con, eid)
+            print(format_replay(replay(history)))
+            print(f"next gameweek: {next_free(history)} free, chips left "
+                  f"{', '.join(chips_left(history, history[-1].gameweek + 1)) or 'none'}")
         elif args.command == "blind-score":
             if args.all == (args.gw is not None):
                 parser.error("pass exactly one of --gw N or --all")

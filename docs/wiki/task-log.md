@@ -1,10 +1,23 @@
 # Task log (newest first)
 
-## NEXT TASK (not started; written 2026-10-27): real-squad replay, chips
+## NEXT TASK (written 2026-10-28): chips in the planner
 Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` timing entry below.
-1. Replay the real squad from `entry_picks` for 2026-27; real free-transfer / chip history.
+1. Model chips (wildcard, free hit, bench boost, triple captain) in `plan_transfers` / the planner
+   backtest; `fpl.replay.chips_left` already says which are available.
 2. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The
    live `ep` track record is the only clean arbiter for `xp` (see below).
+
+## 2026-10-28: Real free-transfer / chip history (branch feat/real-replay)
+- New `fpl.replay` + `fpl replay`: reconstructs free transfers per GW from `entry_gameweeks`
+  (transfers, hit cost, active chip). Rule found by fitting the recorded costs: unused free transfers
+  bank (cap 5), +1 per GW, a wildcard / free-hit week uses none and adds none. It reproduces the
+  recorded hit in all 8 GW of 2026-27 (hits GW4 8, GW8 4). Free transfers going into GW9: 1.
+- Chips used 2026-27: free hit GW3, triple captain GW4, wildcard GW5; bench boost left (first half).
+- `fpl transfers --free` now defaults to the derived value; output lists chips left. Chip plays are
+  not planned yet. The replay of the squad itself already worked (`entry_picks` feeds `fpl transfers`).
+- Caveats: the cap-5 and no-add-after-chip rules rest on 8 GW of one entry (the chip rule is checked by
+  GW4 / GW6 / GW8 hits only); the half-season chip windows (GW1-19 / 20-38) are from the 2025-26 rules.
+  7 new tests in `tests/test_replay.py`; 94 pass.
 
 ## 2026-10-28: GW9 transfer question, Joao Pedro out (no code changes)
 - Ran `fpl snapshot` (snapshot 6) and `fpl entry`. Joao Pedro: thigh injury, no return date, 0% chance,
@@ -18,7 +31,10 @@ Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` 
 - Career splits by opponent tier (top7 / mid / bottom6 of that season's table, appearances only):
   Evanilson 3.40 / 3.44 / 4.29 pts per game (n 25/27/21); Jackson 4.12 / 3.92 / 4.05 (n 26/24/20).
   Jackson's goals per game vs top 7 0.42 vs 0.20; samples small, differences within noise.
-- Outcome: advice was Pedro out now; Evanilson now / Jackson around GW11-12 is reasonable. Not executed
+- Outcome (user, 2026-10-28): made Pedro -> Evanilson for GW9 (the planner's best single transfer; Jackson
+  and Neto-for-Rogers left for later). Evanilson vs Jackson long term: Evanilson 678 min, 5.7 pts/90, xG/90
+  0.41, 6.2m; Jackson 547 min, 5.6 pts/90, xG/90 0.30, 6.8m; a lean, not a verdict.
+- Original advice: Pedro out now; Evanilson now / Jackson around GW11-12 is reasonable. Not executed
   by this repo; the user decides.
 
 ## 2026-10-27: Is vaastav `xp` recorded before the deadline? (branch feat/xp-timing)

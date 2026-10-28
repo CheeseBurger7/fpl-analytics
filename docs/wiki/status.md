@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-27, xp timing investigated on branch feat/xp-timing)
+# Status (last updated: 2026-10-28, real free-transfer / chip history on branch feat/real-replay)
 
 ## Done
 | PR | What |
@@ -17,12 +17,14 @@
 | #15 | `fpl blind-score --all` |
 | #18 | LightGBM tuning sweep: defaults kept |
 | (branch feat/xp-timing) | `xp` timing investigation: `xp` leaks; `xp_prev` leak-free proxy |
+| (branch feat/real-replay) | `fpl.replay` + `fpl replay`: real free-transfer / chip history; `fpl transfers` derives `--free` |
 | #17 | `fpl.horizon` per-horizon models (better MAE, no planner gain; opt-in); LightGBM tuning sweep: defaults kept |
 | #16 | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
 
-## Next: real-squad replay, chips (start here)
+## Next: chips in the planner (start here)
 Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
-1. Replay the real squad from `entry_picks` (2026-27); real free-transfer / chip history.
+1. Model chips (wildcard, free hit, bench boost, triple captain) in the planner; `fpl.replay.chips_left`
+   gives availability (bench boost is the only first-half chip left for the 2026-27 entry).
    **`xp` timing was investigated 2026-10-27: vaastav `xp` very likely partly leaks the GW result**
    (task-log). Treat `fpl_xp` / `lgbm_xp` / planner absolute numbers as optimistic.
 Standing chores (do whenever a GW passes):
@@ -32,8 +34,8 @@ Standing chores (do whenever a GW passes):
   kickoffs), `fpl transfers`, then `fpl blind-score --gw N`. No `ep` history exists yet, so the
   `ep`-as-`xp` decision rests on one gameweek (GW8).
 Still open from the planner-realism task (selling price and auto-subs DONE, small effect):
-real free-transfer/chip history, replaying the real squad from `entry_picks`, and verifying `xp`
-timing (absolute backtest points of 74-83/GW are optimistic).
+verifying `xp` timing (absolute backtest points of 74-83/GW are optimistic). Real free-transfer/chip
+history and the squad replay are done (2026-10-28).
 
 ## Later
 - Chips (wildcard, free hit, bench boost, triple captain), multi-step transfer plans, live selling
