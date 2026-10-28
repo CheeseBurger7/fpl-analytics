@@ -6,6 +6,21 @@ Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` 
 2. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The
    live `ep` track record is the only clean arbiter for `xp` (see below).
 
+## 2026-10-28: GW9 transfer question, Joao Pedro out (no code changes)
+- Ran `fpl snapshot` (snapshot 6) and `fpl entry`. Joao Pedro: thigh injury, no return date, 0% chance,
+  902k transfers out, price -0.1. Candidates: N.Jackson 6.8m (+0.2m this GW, 823k in), Evanilson 6.2m
+  (+0.1m, 282k in), Neto 6.6m. GW9 deadline 31 Oct 11:00.
+- `fpl transfers --gw 9 --horizon 4` (lgbm_xp, bank 0.1, 1 free): best single transfer Pedro -> Evanilson
+  (net 195.8 vs 175.7 hold); predicted GW9-12 points Evanilson 25.6, Neto 25.6, Jackson 24.4 (flat
+  persistence, so blind to fixtures). 3-transfer plan with 8-pt hit includes Jackson.
+- Fixtures GW9-14: mean FDR equal (about 2.67); GW15 Evanilson Arsenal (A, FDR 5) vs Jackson Coventry
+  (A, 2). Opponents' goals conceded/game GW9-14: Jackson 1.69, Evanilson 1.19 (about 8 matches each).
+- Career splits by opponent tier (top7 / mid / bottom6 of that season's table, appearances only):
+  Evanilson 3.40 / 3.44 / 4.29 pts per game (n 25/27/21); Jackson 4.12 / 3.92 / 4.05 (n 26/24/20).
+  Jackson's goals per game vs top 7 0.42 vs 0.20; samples small, differences within noise.
+- Outcome: advice was Pedro out now; Evanilson now / Jackson around GW11-12 is reasonable. Not executed
+  by this repo; the user decides.
+
 ## 2026-10-27: Is vaastav `xp` recorded before the deadline? (branch feat/xp-timing)
 **Evidence says no, at least partly; magnitude unknown.**
 - *Haul test* (single-fixture players, 2020-21..2026-27, n=1512 with pts >= 10): `xp_g - xp_{g-1}` =
