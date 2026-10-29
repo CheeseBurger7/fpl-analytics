@@ -3,7 +3,8 @@ from __future__ import annotations
 import pytest
 
 from fpl.optimizer import Player
-from fpl.planner import best_plan, evaluate_chips, plan_transfers
+from fpl.planner import availability, best_plan, evaluate_chips, plan_transfers
+from fpl.store import Store
 
 # 15-man squad (ids 1-15: 2 GK, 5 DEF, 5 MID, 3 FWD), one club each id % 5, price 50 each,
 # plus bench-quality alternatives 16 (MID, strong) and 17 (MID, strong but pricey).
@@ -129,3 +130,16 @@ def test_bad_chip_arguments_are_rejected():
         plan_transfers(_pool(), [{}], range(1, 16), chip="nope")
     with pytest.raises(ValueError):
         plan_transfers(_pool(), [{}], range(1, 16), chip="3xc", chip_gw=1)
+
+
+def test_availability_uses_the_latest_snapshots_flags_for_its_next_gameweek_only():
+    with Store() as s:
+        c = s.con
+        c.execute("INSERT INTO snapshots VALUES (1, '2026-10-20 00:00:00', 7, 8)")
+        c.execute("INSERT INTO snapshots VALUES (2, '2026-10-28 00:00:00', 8, 9)")
+        for sid, elem, chance in [(1, 1, 0), (2, 1, 100), (2, 2, 75), (2, 3, 0), (2, 4, None)]:
+            c.execute("INSERT INTO player_snapshots (snapshot_id, element_id,"
+                      " chance_of_playing_next_round) VALUES (?, ?, ?)", [sid, elem, chance])
+        assert availability(c, 9) == {1: 1.0, 2: 0.75, 3: 0.0}  # unflagged player 4 is absent
+        assert availability(c, 10) == {}  # the flags say nothing about a later gameweek
+        assert availability(c, 8) == {}

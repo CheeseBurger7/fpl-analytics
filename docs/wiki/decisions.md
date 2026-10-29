@@ -29,9 +29,16 @@
   persistence (latest per-fixture prediction x known fixture count) because dataset rows of later
   GWs contain results the planner could not know. Horizon 4 did not beat horizon 1. Compare
   policies/predictors only; absolute points are optimistic (see task log caveats).
-- **`ep` stands in for `xp` live (provisional).** One-GW test (GW8): `lgbm_xp` fed `ep` captured
-  0.828 vs `fpl_ep` 0.566, so `fpl transfers` defaults to `lgbm_xp` and `blind-pick --model` records
-  it. Later horizon GWs have no `ep` and use persistence. Revisit once several GWs of `ep` exist.
+- **Default predictor is leak-free `lgbm` (2026-10-29, supersedes "`ep` stands in for `xp`").**
+  `lgbm_xp` learned to trust a leaky `xp` (captured 0.87-0.88 vs 0.38-0.42 leak-free; `xp_prev` adds
+  nothing), so it likely over-weights live `ep`. `fpl transfers` and `fpl backtest-planner` now default
+  to `lgbm`; `lgbm_xp` / `fpl_xp` stay opt-in. `blind-pick --model` still records `lgbm_xp(ep)` next to
+  `fpl_ep` and `rolling_mean_5` so `blind-score --all` builds the live evidence (one GW so far: GW8
+  `lgbm_xp(ep)` 0.828 vs `fpl_ep` 0.566). Promote `ep`-based models only if they beat `lgbm` and
+  `fpl_ep` over several GWs; the long-term fix is a model trained on stored live `ep`.
+- **Availability news is a live multiplier, not a feature (2026-10-29).** Snapshots hold
+  `chance_of_playing_next_round` from GW8 only, so no model can learn it yet. `horizon_predictions`
+  multiplies the first GW of `lgbm` / `rolling_mean_5` by chance/100 (`news=False` turns it off).
 - **Horizon models are opt-in.** Per-horizon LightGBM (`fpl.horizon`) lowers MAE vs persistence
   (h3 1.121 vs 1.175, 2024-25) but did not improve planner totals (worse on 2024-25), so the
   planner keeps persistence by default.
@@ -47,3 +54,5 @@
 - **`xp` is suspect; `xp_prev` is the leak-free check.** vaastav `xp` of a gameweek appears to include
   that gameweek's result (haul test, task log 2026-10-27). Report `lgbm` and `lgbm_xp` (and `xp_prev`
   variants via `--lag-xp`) together; never quote `lgbm_xp` / planner totals as realistic.
+- **`xp` is split over DGW fixture rows.** vaastav repeats the round `xp` on each row; dividing by the
+  row count makes it a per-fixture forecast that sums to the round (2026-10-29).

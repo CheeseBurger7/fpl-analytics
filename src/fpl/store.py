@@ -228,6 +228,29 @@ CREATE TABLE IF NOT EXISTS hist_player_gw (
     raw         JSON,
     PRIMARY KEY (season, element_id, fixture_id)
 );
+
+-- Premier League results and betting odds (football-data.co.uk), one row per match. Decimal odds.
+-- b365 / ps / avg are pre-match prices; psc / avgc are the closing prices. A season's missing
+-- lines are NULL (average and Over/Under / handicap columns start in 2019-20).
+CREATE TABLE IF NOT EXISTS match_odds (
+    season      VARCHAR NOT NULL,
+    match_date  DATE NOT NULL,
+    home_team   VARCHAR NOT NULL,   -- football-data spelling
+    away_team   VARCHAR NOT NULL,
+    home_team_id INTEGER,           -- hist_teams.team_id of that season, NULL if not matched
+    away_team_id INTEGER,
+    home_goals  INTEGER,
+    away_goals  INTEGER,
+    b365_h DOUBLE, b365_d DOUBLE, b365_a DOUBLE,
+    ps_h DOUBLE, ps_d DOUBLE, ps_a DOUBLE,
+    avg_h DOUBLE, avg_d DOUBLE, avg_a DOUBLE,
+    avg_over25 DOUBLE, avg_under25 DOUBLE,
+    ah_line DOUBLE, avg_ah_h DOUBLE, avg_ah_a DOUBLE,
+    psc_h DOUBLE, psc_d DOUBLE, psc_a DOUBLE,
+    avgc_h DOUBLE, avgc_d DOUBLE, avgc_a DOUBLE,
+    raw         JSON,
+    PRIMARY KEY (season, home_team, away_team)
+);
 """
 
 HIST_GW_COLUMNS = (
@@ -240,6 +263,13 @@ HIST_GW_COLUMNS = (
     "transfers_balance", "raw",
 )  # fmt: skip
 
+
+ODDS_COLUMNS = (
+    "season", "match_date", "home_team", "away_team", "home_team_id", "away_team_id",
+    "home_goals", "away_goals", "b365_h", "b365_d", "b365_a", "ps_h", "ps_d", "ps_a",
+    "avg_h", "avg_d", "avg_a", "avg_over25", "avg_under25", "ah_line", "avg_ah_h", "avg_ah_a",
+    "psc_h", "psc_d", "psc_a", "avgc_h", "avgc_d", "avgc_a", "raw",
+)  # fmt: skip
 
 _INSERT_BATCH = 500
 
@@ -406,6 +436,17 @@ class Store:
         self._insert("entry_transfers", rows, replace=True)
 
     # -- historical seasons ------------------------------------------------------------------
+
+    def replace_odds_season(self, season: str, rows: Sequence[Sequence[Any]]) -> None:
+        """Swap in one season's ``match_odds`` rows (column order ``ODDS_COLUMNS``) atomically."""
+        self.con.execute("BEGIN")
+        try:
+            self.con.execute("DELETE FROM match_odds WHERE season = ?", [season])
+            self._insert("match_odds", rows, replace=True)
+            self.con.execute("COMMIT")
+        except BaseException:
+            self.con.execute("ROLLBACK")
+            raise
 
     def replace_hist_season(
         self,

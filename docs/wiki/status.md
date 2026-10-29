@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-28, real free-transfer / chip history on branch feat/real-replay)
+# Status (last updated: 2026-10-29, open-questions pass, `xp` DGW fix, odds ingest, on branch feat/xp-fix-odds)
 
 ## Done
 | PR | What |
@@ -43,17 +43,24 @@ verifying `xp` timing (absolute backtest points of 74-83/GW are optimistic). Rea
 history and the squad replay are done (2026-10-28).
 
 ## Later
+- **Match odds as fixture-strength features:** ingested 2026-10-29 (`fpl import-odds`, table `match_odds`,
+  11 seasons). Next: implied win / draw probabilities, expected goals from Over/Under + handicap,
+  implied clean-sheet probability as features, backtest vs `lgbm`. Open: odds for upcoming GWs.
 - Multi-step transfer plans, live selling prices from `entry` data (the backtest already models them).
 - Lagged goal / assist / xG features and component models: tried 2026-10-28, no gain, code reverted.
   ICT done 2026-10-27: no gain. Untried: availability news as a feature (needs a stored history of
   `chance_of_playing`; snapshots have it from now on), RF / Ridge baselines, ensemble.
 - Differentials, explorer.
 - Fix mid-season-mover team features (see data.md).
+- Tried 2026-10-29, no gain, reverted: clean-sheet and venue-split (home / away) opponent features.
+  The model is limited by missing news, not by fixture context; a fixture-difficulty rating from
+  the FPL `fixtures` difficulty field (`fixture_snapshots`) is untried.
 
 ## Open questions
-- How does vaastav record `xp` on double-gameweek rows? The harness sums it per fixture row.
-- vaastav has 2026-27 only to GW6 (checked 2026-10-25); how quickly does it catch up? The adapter
-  covers the gap from `element_history`.
-- Is `ep_this` really per-GW? It equalled `ep_next` in every spot check.
-- How much of `xp`'s backtest value is leak? Live `ep` vs backtest `xp` are close over 2 GWs; need more GWs.
-- Does `ep` as `xp` hold up beyond GW8? One gameweek: lgbm_xp(ep) 0.828 vs fpl_ep 0.566.
+Answered 2026-10-29 (task log): DGW `xp` is the round total repeated per fixture row (harness fixed);
+`ep_this` is `ep_next` with this-round availability, not a separate forecast; vaastav lags ~2.5 weeks in
+batches (GW6 on 2026-10-29).
+- How much of `xp`'s backtest value is leak? After the DGW fix `lgbm_xp` captures 0.87-0.88 vs 0.38-0.42
+  leak-free (`lgbm`, `lgbm_xp_prev`). Live `ep` vs backtest `xp` are close over 2 GWs; needs more GWs of `ep`.
+- (Defaults now leak-free `lgbm`, 2026-10-29.) Does `ep` as `xp` hold up beyond GW8? One gameweek: lgbm_xp(ep) 0.828 vs fpl_ep 0.566. Needs the `ep`
+  history from the standing chores.

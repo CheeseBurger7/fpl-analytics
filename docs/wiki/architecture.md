@@ -11,6 +11,7 @@ All code is in `src/fpl/`; tests are in `tests/` (in-memory DuckDB, mocked HTTP,
 | `features.py` | `build_features(con)` returns a DuckDB relation, one row per `hist_player_gw` row; `FEATURE_COLUMNS` |
 | `backtest.py` | Walk-forward harness (below) |
 | `optimizer.py` | MILP squad/lineup selection via scipy `milp` (below) |
+| `odds.py` | `fpl import-odds`: football-data.co.uk results + odds into `match_odds` (`parse_odds_rows`, `import_odds_seasons`, `team_key`) |
 | `model.py` | `LightGBMPredictor` (`lgbm`, `lgbm_xp` via `model_predictors()`), extra `model`; `fpl backtest --model` |
 | `planner.py` | Transfer planner (below) |
 | `planbacktest.py` | Season-long planner backtest (below) |
@@ -89,7 +90,7 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
 - Chips: `plan_transfers(chip="3xc"|"bboost"|"freehit"|"wildcard", chip_gw=g)` plays one chip in horizon
   gameweek g (free hit / wildcard add an alternative squad `Plan.chip_squad`); `evaluate_chips` ranks
   every chip x gameweek by gain over the best chip-free plan. `fpl transfers --chips` prints it.
-- `fpl transfers --gw N` (default predictor `lgbm_xp`) reads the squad/bank from `entry_picks` / `entry_gameweeks` (latest GW <= N).
+- `fpl transfers --gw N` (default predictor `lgbm`; first GW scaled by `planner.availability`) reads the squad/bank from `entry_picks` / `entry_gameweeks` (latest GW <= N).
 
 ## planbacktest.py
 - `simulate(gws, info, policy, horizon=1, discount=1.0, start=None) -> SeasonRun`: pure; `gws` is a
@@ -112,7 +113,7 @@ windows count fixtures played (blanks skipped). Columns: `mins_per_fix_{3,5,10}`
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\python -m ruff check .
 fpl backtest --season 2024-25 --step 0 --by-season [--captured]   # --captured takes ~55s per season
-fpl backtest-planner [--season S] [--predictor fpl_xp|lgbm_xp] [--horizon 1]   # ~45s per season/predictor
+fpl backtest-planner [--season S] [--predictor lgbm|fpl_xp|lgbm_xp]  # default lgbm [--horizon 1]   # ~45s per season/predictor
 ```
 
 ## `fpl.horizon` (branch feat/next-task)

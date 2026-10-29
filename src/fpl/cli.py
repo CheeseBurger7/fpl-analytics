@@ -1,4 +1,4 @@
-"""Command line entry point: ``fpl snapshot|history|import-history|entry|backtest|blind-*``."""
+"""Command line entry point: ``fpl snapshot|history|import-history|import-odds|entry|...``."""
 
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ from fpl.backtest import default_baselines, format_summary, load_dataset, run_ba
 from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, seasons_between
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
 from fpl.live import live_features, mean_captured, player_pool, predictions, score_blind
+from fpl.odds import DEFAULT_CACHE as ODDS_CACHE
+from fpl.odds import import_odds_seasons
+from fpl.odds import make_http as make_odds_http
 from fpl.optimizer import CapturedFractionHook, Player, optimize_squad, pick_lineup
 from fpl.planner import best_plan, evaluate_chips, horizon_predictions, plan_transfers
 from fpl.replay import chips_left, format_replay, load_history, next_free, replay
@@ -44,6 +47,13 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--to", dest="last", default=LAST_COMPLETE_SEASON, help="last season")
     i.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
     i.add_argument("--refresh", action="store_true", help="re-download cached CSVs")
+
+    o = sub.add_parser("import-odds", help="load match odds from football-data.co.uk")
+    o.add_argument("--from", dest="first", default=FIRST_SEASON, help="first season, e.g. 2016-17")
+    o.add_argument("--to", dest="last", default=CURRENT_SEASON, help="last season")
+    o.add_argument("--cache-dir", type=Path, default=ODDS_CACHE)
+    o.add_argument("--refresh", action="store_true",
+                   help="re-download cached CSVs (the current season is always re-downloaded)")
 
     rp = sub.add_parser("replay", help="real free-transfer / chip history from stored entry data")
     rp.add_argument("--entry-id", type=int, default=None, help="default $FPL_ENTRY_ID")
@@ -98,13 +108,14 @@ def build_parser() -> argparse.ArgumentParser:
                         "use --horizon 6+ and --max-transfers 1)")
     t.add_argument("--max-transfers", type=int, default=3)
     t.add_argument("--discount", type=float, default=1.0, help="weight per later gameweek")
-    t.add_argument("--predictor", default="lgbm_xp",
+    t.add_argument("--predictor", default="lgbm",
                    choices=["lgbm", "lgbm_xp", "rolling_mean_5", "fpl_ep"])
 
     pb = sub.add_parser("backtest-planner", help="season-long transfer planner vs hold, on actuals")
     pb.add_argument("--season", action="append", help="season to evaluate (repeatable)")
-    pb.add_argument("--predictor", action="append", choices=["fpl_xp", "lgbm_xp"],
-                    help="repeatable; default both")
+    pb.add_argument("--predictor", action="append", choices=["fpl_xp", "lgbm", "lgbm_xp"],
+                    help="repeatable; default lgbm (leak-free). fpl_xp / lgbm_xp use vaastav xp, "
+                         "which leaks the result: their totals are optimistic")
     pb.add_argument("--horizon", type=int, default=1, help="gameweeks to look ahead (1 = no leak)")
     pb.add_argument("--discount", type=float, default=1.0)
     pb.add_argument("--chips", action="store_true",
@@ -158,10 +169,10 @@ def planner_backtest(store: Store, args: argparse.Namespace) -> None:
         summarize,
     )
 
-    wanted = args.predictor or ["fpl_xp", "lgbm_xp"]
+    wanted = args.predictor or ["lgbm"]
     preds = [ColumnPredictor("fpl_xp", "xp")] if "fpl_xp" in wanted else []
-    if "lgbm_xp" in wanted:
-        preds.append(_model_predictors()[1])
+    models = dict(zip(("lgbm", "lgbm_xp"), _model_predictors(), strict=True))
+    preds += [m for name, m in models.items() if name in wanted]
     data = load_dataset(store.con)
     ahead = None
     if args.horizon_models and "lgbm_xp" in wanted:
@@ -339,6 +350,16 @@ def main(argv: list[str] | None = None) -> int:
                     on_season=lambda s, n: print(f"{s}: {n} rows", file=sys.stderr),
                 )
             print(f"{len(done)} seasons, {sum(done.values())} player-fixture rows")
+        elif args.command == "import-odds":
+            with make_odds_http() as http:
+                done: dict[str, int] = {}
+                for season in seasons_between(args.first, args.last):
+                    done |= import_odds_seasons(
+                        http, store, [season], cache_dir=args.cache_dir,
+                        refresh=args.refresh or season == CURRENT_SEASON,
+                        on_season=lambda s, n: print(f"{s}: {n} matches", file=sys.stderr),
+                    )  # fmt: skip
+            print(f"{len(done)} seasons, {sum(done.values())} matches with odds")
         elif args.command == "backtest":
             result = run_backtest(
                 load_dataset(store.con),
