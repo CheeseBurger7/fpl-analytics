@@ -16,7 +16,7 @@ DuckDB file `data/processed/fpl.duckdb` (gitignored). Do not commit anything und
 
 - Odds: `match_odds` (football-data.co.uk): one row per match, 2016-17..2026-27, with `home_team_id` /
   `away_team_id` = `hist_teams.team_id` of the season. Refresh with `fpl import-odds` (always re-fetches
-  the current season). Not available for unplayed GWs yet (see task log).
+  the current season). Not available for unplayed GWs yet (see task log). Not used by any model (odds features tried, no clear gain).
 
 ## Gotchas
 - `element_id` / `team_id` are only stable within a season; the cross-season key is `hist_players.code`.
