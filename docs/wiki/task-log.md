@@ -79,7 +79,33 @@
 - **Not answerable yet:** leak share of `xp` and whether `ep` as `xp` holds past GW8 both need a live
   `ep` history; only GW8-9 exist. Collect via the standing chores (snapshot before each deadline).
 
-## NEXT TASK (written 2026-10-28): collect `ep`, then fixture-aware chip timing
+## NEXT TASK (written 2026-10-29): odds-derived features and backtest
+Start from `main` after PR #23 (DGW `xp` fix, leak-free default, `match_odds` ingest) is merged; read
+`status.md`, `data.md`, `decisions.md` and the 2026-10-29 entry below. `fpl import-odds` fills `match_odds`.
+1. **Join odds to the feature rows** (`fpl.features`): per player-fixture, home id = `team_id` if
+   `was_home` else `opponent_team` (away id the other way), joined on `(season, home_team_id,
+   away_team_id)`. Caveat: `hist_players.team_id` is the end-of-season club, so mid-season movers join
+   wrongly or not at all (see data.md); NULL is fine.
+2. **Features** (pre-match columns only, never `psc_*` / `avgc_*`, which are later than a deadline):
+   overround-normalised win / draw / loss probability of the player's side (`b365_*` has all 11
+   seasons; `avg_*`, Over/Under 2.5 and `ah_line` only from 2019-20, NULL before: LightGBM takes NaN),
+   expected goals for / against from Over/Under + handicap, implied clean-sheet probability (about
+   `exp(-opponent expected goals)`), and a home / away flag already exists.
+3. **Backtest** with the exact earlier command: `fpl backtest --season 2022-23 --season 2023-24
+   --season 2024-25 --step 0 --by-season --model --captured`. Baseline `lgbm` captured fraction
+   0.415 / 0.370 / 0.416 (mean 0.400), MAE 1.117 / 0.991 / 1.053, Spearman 0.693 / 0.679 / 0.692; noise
+   about +-0.03 per season, so adopt only a clear mean gain. ICT, goal / assist rates, components and
+   venue / clean-sheet features all gave nothing, so expect fixture strength to be the last cheap lever
+   before news. Per-horizon models must drop the fixture-specific columns (`fpl.horizon.DROPPED`).
+4. **Live path:** `fpl.live` builds features for unplayed GWs from TEMP tables, so odds for the upcoming
+   GW must be read there. football-data `fixtures.csv` had 0 Premier League rows on 2026-10-29: check
+   again nearer the weekend; if odds are missing for a GW, predict that GW with the odds columns NaN.
+5. Standing chores still apply (see below): freeze GW9 with `fpl blind-pick --gw 9 --model` before the
+   first kickoff, and after GW9 `fpl snapshot`, `fpl blind-score --gw 9` / `--all`.
+Conventions: short-lived branch + PR, tests with mocked HTTP / in-memory DuckDB, update the wiki, do not
+commit unless asked, no Claude footer in commits or PRs.
+
+## Backlog (written 2026-10-28, still open): collect `ep`, then fixture-aware chip timing
 Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` timing entry below.
 1. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The
    live `ep` track record is the only clean arbiter for `xp` (see below) and the remaining model lever

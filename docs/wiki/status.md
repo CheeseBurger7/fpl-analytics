@@ -26,8 +26,9 @@
 How to produce a GW's predictions / lineup / transfers: [running-predictions.md](running-predictions.md).
 (A `fpl lineup` / `fpl squad` CLI command would replace the Python snippets there; not built.)
 
-## Next: collect `ep`, fixture-aware chip timing (start here)
-Full brief: top entry of [task-log.md](task-log.md) ("NEXT TASK"). Summary:
+## Next: odds-derived features + backtest (start here)
+Full brief: the "NEXT TASK" entry in [task-log.md](task-log.md); the older `ep` / chip-timing brief is
+the "Backlog" entry below it. Summary:
 1. Chips are modelled (planner + `fpl transfers --chips` + backtest policy). Open: fixture-aware
    later-GW predictions so chip timing can beat "play early"; free hit / wildcard in the backtest.
    **`xp` timing was investigated 2026-10-27: vaastav `xp` very likely partly leaks the GW result**
