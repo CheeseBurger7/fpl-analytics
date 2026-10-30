@@ -9,7 +9,7 @@ a better MAE can still pick worse squads if it mis-ranks the top players.
 ## Predictors
 - **`xp`**: FPL's own expected points per player-fixture in the historical vaastav data (from
   2020-21). Baseline `fpl_xp`, and an input to `lgbm_xp`.
-- **`ep`**: the same idea from the live API (`ep_this` / `ep_next` in the snapshot). Baseline
+- **`ep`**: the same idea from the live API (`ep_this` / `ep_next` in the snapshot), but in practice `form` x chance of playing (data.md). Baseline
   `fpl_ep` in `blind-pick`. Only one-GW evidence that `ep` can replace `xp` (task log).
 - **`rolling_mean_5`**: mean points over the player's last 5 fixtures played (`pts_per_fix_5`).
 - **`career_mean`**: mean points over all prior fixtures. **`constant_2`**: predicts 2 for everyone.
@@ -43,7 +43,7 @@ a better MAE can still pick worse squads if it mis-ranks the top players.
   transfers. **planner_hits**: margin 0. **`lgbm_xp(ep)`**: `lgbm_xp` fed FPL's live `ep` as `xp`.
 - Compare policies and predictors with each other; absolute points are optimistic.
 
-## Reference numbers (2024-25, one fit per season; after the zero-`xp` fix, 35 GWs)
+## Reference numbers (2024-25, one fit per season; after the zero-`xp` fix, 35 GWs; predates the DGW `xp` fix, which lifts lgbm_xp captured to 0.881 and fpl_xp to 0.661)
 | predictor | MAE | Spearman | top10 | captured fraction |
 |---|---|---|---|---|
 | rolling_mean_5 | 1.107 | 0.683 | 0.171 | 0.372 |

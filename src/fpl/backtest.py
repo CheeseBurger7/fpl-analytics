@@ -91,6 +91,10 @@ def load_dataset(con: duckdb.DuckDBPyConnection) -> Dataset:
     vaastav stores a missing ``xp`` as 0 for a whole round (27 of 38 rounds in 2025-26), so a
     round whose ``xp`` is 0 for everyone is treated as missing (NULL), not as a forecast of 0.
 
+    On a double gameweek vaastav repeats the round's ``xp`` on both fixture rows (mean 5.7 vs 2.7 on
+    single-gameweek rows), so it is divided by the player's row count to be a per-fixture forecast
+    that the harness can sum.
+
     ``xp_prev`` is the player's ``xp`` per fixture in his latest earlier gameweek with an ``xp``.
     vaastav's ``xp`` of a gameweek looks partly recorded after it was played (see the wiki), so
     ``xp`` itself may leak the result; ``xp_prev`` only holds what was known before the deadline.
@@ -100,7 +104,9 @@ def load_dataset(con: duckdb.DuckDBPyConnection) -> Dataset:
     sql = f"""
     WITH j AS (
         SELECT f.season, f.round, f.kickoff_time, f.element_id, f.fixture_id, f.target,
-               CASE WHEN MAX(g.xp) OVER (PARTITION BY f.season, f.round) > 0 THEN g.xp END AS xp,
+               CASE WHEN MAX(g.xp) OVER (PARTITION BY f.season, f.round) > 0
+                    THEN g.xp / COUNT(*) OVER (PARTITION BY f.season, f.element_id, f.round)
+               END AS xp,
                MIN(f.kickoff_time) OVER (PARTITION BY f.season, f.round) AS gw_start, {cols}
         FROM feat f JOIN hist_player_gw g USING (season, element_id, fixture_id)
         WHERE f.kickoff_time IS NOT NULL

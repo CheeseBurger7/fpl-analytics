@@ -1,5 +1,84 @@
 # Task log (newest first)
 
+## 2026-10-29: Open questions pass (branch feat/xp-fix-odds)
+- **DGW `xp` (fixed):** on a double-gameweek vaastav repeats the round's `xp` on both fixture rows
+  (identical in 100% of 3,360 DGW player-rounds 2020-21..2024-25; mean 5.7 on DGW rows vs 2.7 on single
+  rows). The harness summed it per fixture row, double-counting. `load_dataset` now divides `xp` by the
+  player's row count in the round (`xp_prev` becomes genuinely per fixture). Test added; 105 tests pass.
+  Effect (`--step 0 --captured`, 2022-23 / 2023-24 / 2024-25): `lgbm_xp` captured 0.770 / 0.805 / 0.833 ->
+  **0.872 / 0.882 / 0.881**, MAE 0.797 / 0.677 / 0.699 -> 0.698 / 0.600 / 0.648; `fpl_xp` captured 0.679 /
+  0.629 / 0.667 -> 0.683 / 0.640 / 0.661. Leak-free `lgbm` and `lgbm_xp_prev` unchanged (0.42 / 0.38 / 0.41).
+  Cleaner `xp` makes the leak easier to exploit: the gap to `lgbm_xp_prev` (~0.41) is now ~0.47. Earlier
+  `lgbm_xp` / planner backtest numbers (glossary reference table, chips entry) predate the fix and are
+  understated on `xp` but remain leak-inflated; the planner backtest was not rerun.
+- **`ep_this` (answered):** not a separate per-GW forecast. It equals `ep_next` except where availability
+  differs: both are the same base `ep` times `chance_of_playing_{this,next}_round` / 100 (Calafiori
+  5.3 vs 4.0 at 75%). 11 of 669 players differ in snapshot 1, 34 in snapshot 6. Use `ep_next`.
+- **vaastav coverage (answered):** upstream still has 2026-27 only to GW6 on 2026-10-29. Only 3 data
+  commits so far: GW1 (2026-08-28), then one PR (#226, merged 2026-10-22) covering GW2-6; it comes in
+  batches ~2.5 weeks behind (GW8 finished 2026-10-26), with `xP2` / `xP6` files missing. Do not wait for
+  it; the `element_history` adapter is the source for current-season rows.
+- **Is there a historical `ep` to train `lgbm_ep` on? No.** vaastav's `xP{N}.csv` files (2020-21..2024-25,
+  nearly every GW) are identical to the `xp` column of round N (corr 1.0), so they are not an independent
+  pre-deadline capture. Their round-level corr with round-N points is 0.72-0.78 but only 0.47-0.50 with
+  round N+1 points (2022-23..2024-25 spot checks), more evidence `xp` is recorded after the GW. A clean
+  `lgbm_ep` needs live snapshots accumulated over many GWs.
+- **Default switched to leak-free `lgbm`:** `fpl transfers --predictor` and `fpl backtest-planner
+  --predictor` now default to `lgbm` (backtest-planner also accepts `lgbm`); `fpl_xp` / `lgbm_xp` stay
+  opt-in. `blind-pick --model` still logs `lgbm_xp(ep)` for the live track record. See decisions.md.
+- **GW9 forecast (snapshot 7, 2026-10-29), squad = GW8 squad with Pedro -> Evanilson, bank ~1.7 at
+  now_cost:** `lgbm` XI Raya; Van Hecke, Calafiori, Konsa; Palmer (C), Rogers, Tavernier, Gibbs-White;
+  Haaland, Calvert-Lewin, Evanilson = 46.4 points incl. captain bonus (Palmer 5.3). `lgbm_xp(ep)` differs
+  (captain Evanilson 7.2, 51.5 points). Calafiori is a 75% doubt. Not frozen (`blind-pick` not run).
+- **`ep_next` is `form` (found 2026-10-29):** in snapshot 7, `ep_next == form` for 334 of 361 players with
+  `ep_next > 0` (92%); the other 27 are `form x chance_of_playing_next_round` (Calafiori 5.3 -> 4.0 at
+  75%), injured / suspended players get 0. 622 of 669 equal over all players, snapshots 1-6 the same
+  (624-629). So `ep` is recent average points with an availability adjustment: no fixture or opponent
+  information. Likely cause of the vaastav `xp` leak: `xp` / `xP{N}` recorded after GW N is `form` that
+  already includes GW N's points. Live `ep` is clean but is a form chaser: `lgbm_xp(ep)` makes Evanilson
+  (ep 8.3) GW9 captain at 7.2 while `lgbm` says 3.6.
+- **Venue / clean-sheet fixture-difficulty features (tried, reverted, never merged):** six new features,
+  all lagged and leak-free: `opp_cs_6` (opponent clean-sheet rate, last 6 fixtures), and per venue, over a
+  team's last 6 fixtures at that venue only (the opponent's record away when the player's side is at
+  home, and vice versa; the player's own side's record at this venue): `opp_cs_venue_6`,
+  `opp_ga_venue_6`, `opp_gf_venue_6`, `own_cs_venue_6`, `own_gf_venue_6`. Walk-forward `lgbm`, `--step 0
+  --captured`, 2022-23 / 2023-24 / 2024-25 (35 / 37 / 35 GWs, same command before and after): captured
+  0.415 / 0.370 / 0.416 -> 0.422 / 0.356 / 0.417 (means 0.400 -> 0.398); MAE 1.117 / 0.991 / 1.053 ->
+  1.115 / 0.992 / 1.055; Spearman 0.693 / 0.679 / 0.692 -> 0.692 / 0.678 / 0.691. No gain (noise
+  about +-0.03), so the code was discarded. Implementation notes if rebuilt: add `was_home` to
+  `team_fix`, a `venue_gw` / `venue_roll` pair partitioned by `(team_name, was_home)`, join the
+  opponent with `was_home = NOT b.was_home`; per-horizon models (`fpl.horizon.DROPPED`) must drop the
+  fixture-specific columns. Patch kept only in the session scratchpad. Feature gain shares of the
+  current model: recent points ~51%, minutes ~30%, price 6%, fixture context ~5%, ICT ~5%.
+- **Match odds source checked (no code yet):** football-data.co.uk, `mmz4281/{YYZZ}/E0.csv` (plain
+  redirect from `www.` to the bare domain: follow redirects). 380 Premier League matches per season 2016-17..2025-26 and 80 for
+  2026-27 (to 2026-10-25), all with Bet365 / Pinnacle-closing 1X2 odds; Over/Under 2.5 and Asian handicap
+  lines (Avg / Max / Pinnacle) from 2019-20 only. Team names differ for 6 clubs (Man United, Tottenham,
+  Coventry, Sheffield United, ...) vs `hist_teams`, so a small alias map is enough. **Upcoming
+  fixtures:** `fixtures.csv` had 0 Premier League rows on 2026-10-29 (only lower leagues, next 2-3 days),
+  so odds for a GW may appear only a few days before it: check before relying on them live. Next step:
+  an `odds` table, features (implied win / draw probability, expected goals from O/U + handicap,
+  implied clean-sheet probability), backtest vs `lgbm`.
+- **Availability news in live predictions:** `planner.availability(con, gw)` reads the latest snapshot's
+  `chance_of_playing_next_round` (only when `gw` is that snapshot's next GW; unflagged = fit) and
+  `horizon_predictions(..., news=True)` scales the first GW of `lgbm` / `rolling_mean_5` by it (`fpl_ep`
+  and `lgbm_xp` already carry it through `ep`). Snapshot 7 flags: 161 fit-100, 29 doubtful (25/50/75),
+  63 injured, 4 suspended, 106 unavailable (all 0). GW9: Calafiori 2.63 -> 1.98 (75%) and drops out of
+  the XI; XI total 46.4 -> 46.1. It is a rule, not a trained feature: only 7 snapshots hold the flag, so
+  it cannot be backtested; judge it with `blind-score` and train on it once enough GWs are stored.
+- **Odds ingested (`fpl.odds`, `fpl import-odds`, table `match_odds`):** 11 seasons 2016-17..2026-27,
+  3,880 matches (380 per past season, 80 for 2026-27 to 2026-10-25), re-runnable (a season is replaced,
+  never duplicated; the current season is always re-downloaded, past ones come from the cache in
+  `data/raw/footballdata/`). All clubs matched to `hist_teams` ids via `odds.team_key` (alias map for
+  Man United, Tottenham, Coventry, Hull, ...); results agree with vaastav scores for all 380 matches of
+  every past season. Columns: Bet365 / Pinnacle pre-match 1X2, market-average 1X2, Over/Under 2.5 and
+  Asian handicap (average) from 2019-20 (NULL in 2016-17..2018-19), Pinnacle / average closing 1X2
+  (`avgc_*` is NULL before 2019-20). Overround about 1.06. 5 tests in `tests/test_odds.py`.
+  Use pre-match columns for features (closing prices are the last price before kickoff, later than a
+  deadline decision). Next: features (implied probabilities, expected goals, clean sheet), backtest.
+- **Not answerable yet:** leak share of `xp` and whether `ep` as `xp` holds past GW8 both need a live
+  `ep` history; only GW8-9 exist. Collect via the standing chores (snapshot before each deadline).
+
 ## NEXT TASK (written 2026-10-28): collect `ep`, then fixture-aware chip timing
 Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` timing entry below.
 1. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The

@@ -24,12 +24,12 @@ fpl replay            # real free transfers per GW + chips used (bench boost etc
 
 ## 3. Best moves from your squad
 ```
-fpl transfers --gw N --horizon 4                       # default predictor lgbm_xp, --free derived
+fpl transfers --gw N --horizon 4                       # default predictor lgbm, --free derived
 fpl transfers --gw N --horizon 1 --max-transfers 1     # this-GW only
 ```
 - Output per transfer count k: net points (gross minus 4 per transfer beyond the free ones), who goes
   out / in, `<-- best`, chips left, and the GW-N captain.
-- Predictors (`--predictor`): `lgbm_xp` (default, uses FPL `ep` as `xp`), `lgbm` (leak-free), `fpl_ep`,
+- Predictors (`--predictor`): `lgbm` (default, leak-free), `lgbm_xp` (uses FPL `ep` as `xp`; unproven, see decisions), `fpl_ep`,
   `rolling_mean_5`. Compare `lgbm` against `lgbm_xp` when the answer matters.
 - Horizon > 1 uses each player's flat per-fixture prediction x fixture count: it **ignores fixture
   difficulty**. Check fixtures separately for longer plans.
@@ -59,7 +59,7 @@ squad_ids = [r[0] for r in con.execute(
     "SELECT element_id FROM entry_picks WHERE entry_id = ? AND gameweek = ?", [eid, G]).fetchall()]
 bank_tenths = con.execute(
     "SELECT bank FROM entry_gameweeks WHERE entry_id = ? AND gameweek = ?", [eid, G]).fetchall()[0][0]
-pts = horizon_predictions(con, "2026-27", N, 1, "lgbm_xp")        # pts[0][id] = predicted GW-N points
+pts = horizon_predictions(con, "2026-27", N, 1, "lgbm")        # pts[0][id] = predicted GW-N points
 plan = plan_transfers(pool, pts, squad_ids, bank=bank_tenths, free_transfers=0, max_transfers=0)[0]
 plan.xi[0], plan.captain[0]                                         # element ids; bench = squad - xi
 ```
@@ -71,7 +71,7 @@ it fail with `ResourceInUseException`. Checked 2026-10-28: unchanged GW8 squad s
 ```python
 from fpl.optimizer import optimize_squad
 tot = {}                                   # sum predicted points over the horizon
-for g in horizon_predictions(con, "2026-27", N, 4, "lgbm_xp"):
+for g in horizon_predictions(con, "2026-27", N, 4, "lgbm"):
     for i, v in g.items():
         tot[i] = tot.get(i, 0) + v
 pool = [Player(i, pos, team, cost, tot[i]) for i, _, pos, team, cost in info if i in tot]

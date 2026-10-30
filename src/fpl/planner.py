@@ -233,6 +233,28 @@ def evaluate_chips(
     return base, sorted(options, key=lambda o: -o.gain)
 
 
+def availability(con: duckdb.DuckDBPyConnection, gw: int) -> dict[int, float]:
+    """FPL's chance of playing gameweek ``gw`` (0-1) for players it has flagged, else absent.
+
+    Read from the latest snapshot's ``chance_of_playing_next_round``, so it only applies when
+    ``gw`` is that snapshot's next gameweek (otherwise empty). Players FPL has not flagged are
+    fit (full chance); flagged ones are doubtful (25-75) or out (0: injured, suspended, gone).
+    """
+    rows = con.execute(
+        "SELECT snapshot_id, next_gw FROM snapshots ORDER BY snapshot_id DESC LIMIT 1"
+    ).fetchall()
+    if not rows or rows[0][1] != gw:
+        return {}
+    return {
+        i: c / 100
+        for i, c in con.execute(
+            "SELECT element_id, chance_of_playing_next_round FROM player_snapshots"
+            " WHERE snapshot_id = ? AND chance_of_playing_next_round IS NOT NULL",
+            [rows[0][0]],
+        ).fetchall()
+    }
+
+
 def horizon_predictions(
     con: duckdb.DuckDBPyConnection,
     season: str,
@@ -241,6 +263,7 @@ def horizon_predictions(
     predictor: str = "lgbm",
     *,
     min_history: int = 5,
+    news: bool = True,
 ) -> list[dict[int, float]]:
     """Predicted points per player for gameweeks ``gw .. gw+horizon-1`` (fixtures summed).
 
@@ -251,6 +274,10 @@ def horizon_predictions(
     fixtures the player has then, as in ``fpl.planbacktest``). Features of later gameweeks only
     see results up to ``gw-1`` and differ just by fixture context. Gameweeks past the last
     scheduled one come back empty.
+
+    ``news``: scale the first gameweek of ``lgbm`` / ``rolling_mean_5`` by FPL's chance of playing
+    (``availability``; those models have no news input). ``fpl_ep`` / ``lgbm_xp`` already carry it
+    through ``ep``. Not backtestable (no history of the flag): judge it with ``blind-score``.
     """
     from fpl.live import ep_model_predictions, live_features, predictions
 
@@ -284,4 +311,7 @@ def horizon_predictions(
             for r, y in zip(rows, model.predict_rows(rows), strict=True):
                 pred[r["element_id"]] = pred.get(r["element_id"], 0.0) + y
             out.append(pred)
+    if news and predictor in ("lgbm", "rolling_mean_5") and out:
+        chance = availability(con, gw)
+        out[0] = {i: v * chance.get(i, 1.0) for i, v in out[0].items()}
     return out

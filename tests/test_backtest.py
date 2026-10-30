@@ -210,12 +210,24 @@ def test_summary_by_season_and_duplicate_names_rejected(data):
         run_backtest(data, [ConstantPredictor("c"), ConstantPredictor("c")], [S1])
 
 
+def test_double_gameweek_xp_is_split_over_the_fixture_rows():
+    rows = [  # vaastav repeats the round's xp on both fixture rows of a double gameweek
+        _gw_row(S1, 10, 1, 1, "2022-08-06 14:00:00", pts=1, xp=2.0),
+        _gw_row(S1, 10, 2, 2, "2022-08-13 14:00:00", pts=1, xp=6.0),
+        _gw_row(S1, 10, 3, 2, "2022-08-14 14:00:00", pts=1, xp=6.0),
+    ]
+    with Store() as s:
+        _load(s, S1, rows)
+        xp = load_dataset(s.con).columns["xp"]
+    assert xp == [2.0, 3.0, 3.0]  # summed per round: 2.0, 6.0
+
+
 def test_xp_prev_is_the_latest_earlier_xp_per_fixture_and_skips_missing_rounds():
     with Store() as s:
-        rows = [  # player 10: GW2 is a double (xp 2 + 4 -> 3 per fixture); GW3 has no xp
+        rows = [  # player 10: GW2 is a double (xp 3 on both rows = 1.5 each); GW3 none
             _gw_row(S1, 10, 1, 1, "2022-08-06 14:00:00", pts=1, xp=1.0),
-            _gw_row(S1, 10, 2, 2, "2022-08-13 14:00:00", pts=1, xp=2.0),
-            _gw_row(S1, 10, 3, 2, "2022-08-14 14:00:00", pts=1, xp=4.0),
+            _gw_row(S1, 10, 2, 2, "2022-08-13 14:00:00", pts=1, xp=3.0),
+            _gw_row(S1, 10, 3, 2, "2022-08-14 14:00:00", pts=1, xp=3.0),
             _gw_row(S1, 10, 4, 3, "2022-08-20 14:00:00", pts=1, xp=None),
             _gw_row(S1, 10, 5, 4, "2022-08-27 14:00:00", pts=1, xp=5.0),
         ]
@@ -224,5 +236,5 @@ def test_xp_prev_is_the_latest_earlier_xp_per_fixture_and_skips_missing_rounds()
     by_round = {r: p for r, p in zip(d.columns["round"], d.columns["xp_prev"], strict=True)}
     assert by_round[1] is None  # nothing before the first gameweek
     assert by_round[2] == 1.0
-    assert by_round[3] == 3.0
-    assert by_round[4] == 3.0  # GW3 has no xp: carried from GW2
+    assert by_round[3] == 1.5
+    assert by_round[4] == 1.5  # GW3 has no xp: carried from GW2
