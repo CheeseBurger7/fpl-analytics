@@ -19,6 +19,7 @@
 | (branch feat/xp-timing) | `xp` timing investigation: `xp` leaks; `xp_prev` leak-free proxy |
 | (branch feat/real-replay) | `fpl.replay` + `fpl replay`: real free-transfer / chip history; `fpl transfers` derives `--free` |
 | (branch feat/chips-planner) | Chips in the planner: 3xc / bboost / freehit / wildcard in `plan_transfers`, `fpl transfers --chips`, chip policy in the planner backtest (+8-11 pts per chip; timing no better than early) |
+| (not merged) | Odds-derived features (1X2, xG, clean sheet): captured 0.400 -> 0.415, noise, reverted |
 | (not merged) | Component models + lagged goal/assist/xG rates tried and reverted: no gain vs `lgbm` |
 | #17 | `fpl.horizon` per-horizon models (better MAE, no planner gain; opt-in); LightGBM tuning sweep: defaults kept |
 | #16 | Planner backtest: selling price + auto-subs, sell-price budget fix; ICT features (no gain) |
@@ -26,9 +27,9 @@
 How to produce a GW's predictions / lineup / transfers: [running-predictions.md](running-predictions.md).
 (A `fpl lineup` / `fpl squad` CLI command would replace the Python snippets there; not built.)
 
-## Next: odds-derived features + backtest (start here)
-Full brief: the "NEXT TASK" entry in [task-log.md](task-log.md); the older `ep` / chip-timing brief is
-the "Backlog" entry below it. Summary:
+## Next: collect `ep`, then news / fixture-aware chip timing (start here)
+Odds features were tried 2026-10-29: captured 0.400 -> 0.415, inside noise, not adopted (task log).
+The older `ep` / chip-timing brief is the "Backlog" entry in [task-log.md](task-log.md). Summary:
 1. Chips are modelled (planner + `fpl transfers --chips` + backtest policy). Open: fixture-aware
    later-GW predictions so chip timing can beat "play early"; free hit / wildcard in the backtest.
    **`xp` timing was investigated 2026-10-27: vaastav `xp` very likely partly leaks the GW result**
@@ -44,9 +45,9 @@ verifying `xp` timing (absolute backtest points of 74-83/GW are optimistic). Rea
 history and the squad replay are done (2026-10-28).
 
 ## Later
-- **Match odds as fixture-strength features:** ingested 2026-10-29 (`fpl import-odds`, table `match_odds`,
-  11 seasons). Next: implied win / draw probabilities, expected goals from Over/Under + handicap,
-  implied clean-sheet probability as features, backtest vs `lgbm`. Open: odds for upcoming GWs.
+- **Match odds:** ingested 2026-10-29 (`fpl import-odds`, table `match_odds`, 11 seasons). Features
+  (win / draw / loss probability, xG from Over/Under + handicap, clean-sheet probability) tried: mean
+  captured +0.015, within noise, reverted. Odds for upcoming GWs are still missing, so no live use.
 - Multi-step transfer plans, live selling prices from `entry` data (the backtest already models them).
 - Lagged goal / assist / xG features and component models: tried 2026-10-28, no gain, code reverted.
   ICT done 2026-10-27: no gain. Untried: availability news as a feature (needs a stored history of

@@ -39,6 +39,9 @@
 - **Availability news is a live multiplier, not a feature (2026-10-29).** Snapshots hold
   `chance_of_playing_next_round` from GW8 only, so no model can learn it yet. `horizon_predictions`
   multiplies the first GW of `lgbm` / `rolling_mean_5` by chance/100 (`news=False` turns it off).
+- **Odds features not adopted (2026-10-29).** Bet365 win / draw / loss probability, Over/Under +
+  handicap expected goals and implied clean-sheet probability moved `lgbm` captured fraction 0.400 ->
+  0.415 (2022-25; same sign every season, inside +-0.03 noise). Rule: adopt only a clear mean gain.
 - **Horizon models are opt-in.** Per-horizon LightGBM (`fpl.horizon`) lowers MAE vs persistence
   (h3 1.121 vs 1.175, 2024-25) but did not improve planner totals (worse on 2024-25), so the
   planner keeps persistence by default.

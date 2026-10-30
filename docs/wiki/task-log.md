@@ -1,5 +1,32 @@
 # Task log (newest first)
 
+## 2026-10-29: Odds-derived features and backtest (branch feat/odds-features, code reverted)
+- Joined `match_odds` to the feature SQL and added six features: `odds_win_p` / `odds_draw_p` /
+  `odds_loss_p` (Bet365 1X2, overround-normalised, player's side), `odds_own_xg` / `odds_opp_xg`
+  (total goals from the normalised average Over/Under 2.5 price, `2.5 + 4 * (p_over - 0.456)`, split by
+  supremacy `-ah_line`; clamped 0.1-5; NaN before 2019-20) and `odds_cs_p = exp(-odds_opp_xg)`.
+  Home / away clubs come from the fixture's `opponent_team` values, not `hist_players.team_id`, so
+  mid-season movers join correctly. Coverage of the join: 100% of rows in every season (xG features
+  0% for 2016-19 by design). Mean `odds_own_xg` 1.38-1.52, `odds_cs_p` 0.24-0.28 per season. Per-horizon
+  models dropped the six columns (`fpl.horizon.DROPPED`). 111 tests passed with the change.
+- Backtest (`fpl backtest --season 2022-23 --season 2023-24 --season 2024-25 --step 0 --by-season
+  --model --captured`), `lgbm` before -> after: captured 0.415 / 0.370 / 0.416 -> **0.419 / 0.386 /
+  0.440** (mean 0.400 -> 0.415, +0.015); MAE 1.117 / 0.991 / 1.053 -> 1.115 / 0.990 / 1.048; Spearman
+  0.693 / 0.679 / 0.692 -> 0.694 / 0.679 / 0.693. Gain has the same sign in all three seasons but is
+  inside the +-0.03 noise, so by the "adopt only a clear mean gain" rule **not adopted; code reverted**.
+  `lgbm_xp` (leaky) 0.860 / 0.867 / 0.869 (essentially unchanged).
+- Patch kept only in the session scratchpad (`odds-features.patch`); rebuild from the notes above. Not
+  tried: odds-only features restricted to 2019-20+ training, `psc_*` closing prices (later than a
+  deadline), Over/Under + handicap inversion by a proper Poisson solve.
+- GW9 advice run (snapshot 8, 2026-10-30; squad = GW8 picks with Pedro -> Evanilson made by hand, bank
+  1.6 at now_cost, 0 free): unchanged XI `lgbm` 46.3 / `lgbm_xp` 51.5. Best single -4 hit over GW9-12:
+  `lgbm` Gibbs-White -> Mbeumo +3.4, `lgbm_xp` Gibbs-White -> Neto +12.7; GW9 alone no hit pays. Captain:
+  `lgbm` Palmer 5.3 vs Evanilson 3.8, `lgbm_xp` Evanilson 7.2 vs Palmer 3.1 (`ep_next` is form). The
+  `blind_gw9.json` `fresh.predicted_points` (fpl_ep 95.0) is the best unconstrained 15-man squad, not the
+  user's squad. Not frozen with the new snapshot.
+- Live path not touched (no Premier League odds rows for upcoming GWs on 2026-10-29). If odds ever are
+  adopted, the live path reads `match_odds` directly and gets NaN for unplayed GWs.
+
 ## 2026-10-29: Open questions pass (branch feat/xp-fix-odds)
 - **DGW `xp` (fixed):** on a double-gameweek vaastav repeats the round's `xp` on both fixture rows
   (identical in 100% of 3,360 DGW player-rounds 2020-21..2024-25; mean 5.7 on DGW rows vs 2.7 on single
@@ -79,7 +106,7 @@
 - **Not answerable yet:** leak share of `xp` and whether `ep` as `xp` holds past GW8 both need a live
   `ep` history; only GW8-9 exist. Collect via the standing chores (snapshot before each deadline).
 
-## NEXT TASK (written 2026-10-29): odds-derived features and backtest
+## Done 2026-10-29 (brief kept for reference): odds-derived features and backtest
 Start from `main` after PR #23 (DGW `xp` fix, leak-free default, `match_odds` ingest) is merged; read
 `status.md`, `data.md`, `decisions.md` and the 2026-10-29 entry below. `fpl import-odds` fills `match_odds`.
 1. **Join odds to the feature rows** (`fpl.features`): per player-fixture, home id = `team_id` if
