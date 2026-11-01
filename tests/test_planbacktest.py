@@ -240,3 +240,47 @@ def test_unused_chip_is_forced_in_the_last_gameweek_of_the_half():
     gws = [_gw(r, {5: 3.0 + (3 - r)}) for r in (1, 2, 3)]  # decaying: "now" is best at GW1
     run = simulate(gws, INFO, Policy("c", chips=("3xc",), chip_min=100.0), start=_start())
     assert [r.chip for r in run.results] == [None, None, "3xc"]  # min never met; forced at the end
+
+
+# ------------------------------------------------------------------------- free hit / wildcard
+
+FLAT16 = {i: 1 for i in range(1, 17)}
+
+
+def test_free_hit_is_played_in_the_double_gameweek_and_the_squad_comes_back():
+    gws = [
+        _gw(1, {}),
+        _gw(2, {16: 4.5}, fixtures=FLAT16),
+        _gw(3, {16: 9.0}, fixtures=FLAT16 | {16: 2}),  # 16 plays twice: his rate doubles
+        _gw(4, {16: 4.5}, fixtures=FLAT16),
+    ]  # fmt: skip
+    hold = simulate(gws, INFO, Policy("h"), start=_start())
+    fh = simulate(gws, INFO, Policy("f", chips=("freehit",)), start=_start())
+    assert [r.chip for r in fh.results] == [None, None, "freehit", None]
+    assert fh.results[2].points - hold.results[2].points == pytest.approx(12.0)  # 16 as captain
+    assert fh.results[3].points == pytest.approx(hold.results[3].points)  # old squad is back
+    assert fh.results[2].hit == 0 and fh.results[2].transfers == 0
+    # the chip week used none and added none: one fewer than the hold run banks by GW4
+    assert fh.results[3].free_transfers == hold.results[3].free_transfers - 1 == 3
+    assert fh.results[3].bank == hold.results[3].bank
+
+
+def test_wildcard_replaces_the_squad_without_a_hit_and_keeps_it():
+    gws = [_gw(1, {})] + [_gw(r, {16: 6.0}, fixtures=FLAT16) for r in (2, 3, 4)]
+    hold = simulate(gws, INFO, Policy("h"), start=_start())
+    wc = simulate(gws, INFO, Policy("w", chips=("wildcard",)), start=_start())
+    assert [r.chip for r in wc.results] == [None, "wildcard", None, None]
+    assert wc.results[1].hit == 0 and wc.results[1].into == (16,)
+    assert wc.hits == 0
+    assert wc.results[2].free_transfers == wc.results[1].free_transfers  # none added
+    for k in (1, 2, 3):  # 16 is in the squad from the wildcard on
+        assert wc.results[k].points > hold.results[k].points
+
+
+def test_swap_chip_is_never_played_in_the_first_gameweek_and_is_forced_at_the_end():
+    gws = [_gw(r, {5: 3.0}) for r in (1, 2, 3)]
+    run = simulate(gws, INFO, Policy("f", chips=("freehit", "wildcard"), chip_min=100.0),
+                   start=_start())  # fmt: skip
+    assert run.results[0].chip is None
+    assert [r.chip for r in run.results] == [None, None, "freehit"] or \
+        [r.chip for r in run.results] == [None, None, "wildcard"]

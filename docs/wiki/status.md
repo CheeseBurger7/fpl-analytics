@@ -30,13 +30,17 @@ How to produce a GW's predictions / lineup / transfers: [running-predictions.md]
 ## Next: collect `ep`, then news / fixture-aware chip timing (start here)
 Odds features were tried 2026-10-29: captured 0.400 -> 0.415, inside noise, not adopted (task log).
 The older `ep` / chip-timing brief is the "Backlog" entry in [task-log.md](task-log.md). Summary:
-1. Chips are modelled (planner + `fpl transfers --chips` + backtest policy). Open: fixture-aware
-   later-GW predictions so chip timing can beat "play early"; free hit / wildcard in the backtest.
+1. Chips are modelled (planner + `fpl transfers --chips` + backtest policies). Free hit / wildcard are in
+   the season backtest (`--swap-chips`, 2026-10-30): no clear gain over `planner` (+20 / -7 / +3 mean
+   points per season for `--chip-min` 0 / 3 / 6). Open: fixture-aware later-GW predictions so chip timing
+   can beat "play early"; gain net of normal transfers; selling-price-aware chip squads.
    **`xp` timing was investigated 2026-10-27: vaastav `xp` very likely partly leaks the GW result**
    (task-log). Treat `fpl_xp` / `lgbm_xp` / planner absolute numbers as optimistic.
 Standing chores (do whenever a GW passes):
 - **After GW9 finishes:** `fpl snapshot`, `fpl blind-score --gw 9`, `fpl blind-score --all`, record the
-  numbers (GW9 snapshot / blind-pick / transfers were done 2026-10-26; GW9 picks predate the ICT features).
+  numbers. GW9 was re-frozen 2026-10-30 (snapshot 9, `--model`, before the 31 Oct deadline) with the
+  user's squad (GW8 picks, Pedro -> Evanilson by hand) added as `entry` for every predictor; the
+  earlier 2026-10-26 freeze was deleted. Plain `lgbm` is not in the file.
 - Log `ep` every GW: `fpl snapshot` before each deadline, `fpl blind-pick --gw N --model` (before
   kickoffs), `fpl transfers`, then `fpl blind-score --gw N`. No `ep` history exists yet, so the
   `ep`-as-`xp` decision rests on one gameweek (GW8).

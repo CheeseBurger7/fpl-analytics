@@ -1,5 +1,44 @@
 # Task log (newest first)
 
+## 2026-10-30: Free hit and wildcard in the season backtest (branch feat/odds-features, uncommitted)
+- `fpl.planbacktest`: `Policy.chips` accepts `freehit` / `wildcard` (new `PLANNER_SWAP`, `wc_horizon` 4,
+  `swap_gain`, `_choose_swap_chip`, `_week_points`; docstring has the rules). Decided before the normal
+  transfer plan and replacing it that gameweek (never GW1, one chip per GW, once per half): a fresh squad
+  bought with bank + selling value (`plan_transfers(chip=, chip_gw=0, max_transfers=0)`), scored on actuals
+  with auto-subs, no hit, no free transfer used or added (`fpl.replay` rule). Free hit: squad reverts;
+  wildcard: kept (purchase prices tracked). Timing as for the other chips (play now if its predicted gain
+  is the best in the window and >= `chip_min`, forced in the half's last GW); gain = fresh best XI minus
+  current squad's best XI on the same persistence points (wildcard summed over `wc_horizon`, per GW).
+  CLI: `fpl backtest-planner --swap-chips [--chip-min X]`. 3 new tests, 114 pass, ruff clean.
+- Result (`--predictor lgbm`, horizon 1, total points `planner` -> `planner_swap`, seasons 2022-23 /
+  2023-24 / 2024-25; `planner` 2107 / 2048 / 2214): `--chip-min 0`: 2141 / 2048 / 2241 (+34 / 0 / +27);
+  `--chip-min 3`: 2141 / 2048 / 2158 (+34 / 0 / -56); `--chip-min 6`: 2141 / 2080 / 2158 (+34 / +32 /
+  -56). Means +20 / -7 / +3. **No clear gain:** the sign flips with the threshold and one season's
+  timing (wildcard GW3 vs GW4 in 2024-25) moves the total by ~80, as large as the `planner` vs
+  `planner_hits` noise. Chips are played early (free hit GW2-8, wildcard GW2-9, second half GW20-33),
+  not at special weeks; the predicted gain ignores that normal transfers close part of the gap, so it is
+  inflated. Free hit / wildcard are left opt-in; do not read the result as a chip strategy.
+- Not tried: timing from fixture swings (needs the real DGW / BGW GWs of each season to show up in
+  persistence points; they did not drive the choices here), gain net of the best normal plan, more seasons.
+- Gotcha: two `fpl` commands cannot open the DuckDB file at once (the second dies with an IO error), so
+  run backtests one after the other.
+
+## 2026-10-30: GW9 re-freeze and start of the chips task
+- `fpl snapshot` (snapshot 9), `fpl entry`, `fpl blind-pick --gw 9 --model` overwrote
+  `blind_gw9.json` (the 2026-10-26 freeze was deleted at the user's request). `blind-pick` cannot
+  see a transfer not yet stored (no GW9 picks), so the user's squad (GW8 picks, Pedro -> Evanilson, free
+  transfer used, 0 free for the plan) was added to each predictor's `entry` with `pick_lineup` from a
+  scratchpad script. Entry XI by predictor: rolling_mean_5 73.6 (C Haaland), fpl_ep 75.9 (C Haaland),
+  `lgbm_xp(ep)` 51.5 (C Evanilson). Fresh XI `lgbm_xp(ep)` 67.2. Chips left: bench boost only.
+- Open question: after `fpl entry` on 2026-10-30, `entry_transfers` has no GW9 row (latest is GW8,
+  2026-10-23) and `entry_picks` stops at GW8, although the user says Pedro -> Evanilson was made. Picks
+  for an unstarted GW are not exposed by the public endpoint, but the transfers list was expected to
+  include the move; cause unverified (check on the FPL site that the transfer is confirmed).
+- **Finding for chip timing:** `fixture_snapshots` (snapshot 9) schedules exactly 10 matches in each of
+  the 38 gameweeks, every team once: **no blank or double gameweeks exist yet**. Reschedules (cup
+  clashes) will create them later, so fixture-aware bench-boost timing has nothing to exploit now;
+  re-check after each snapshot.
+
 ## 2026-10-29: Odds-derived features and backtest (branch feat/odds-features, code reverted)
 - Joined `match_odds` to the feature SQL and added six features: `odds_win_p` / `odds_draw_p` /
   `odds_loss_p` (Bet365 1X2, overround-normalised, player's side), `odds_own_xg` / `odds_opp_xg`

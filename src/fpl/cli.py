@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from fpl.api import FPLClient
@@ -120,6 +121,11 @@ def build_parser() -> argparse.ArgumentParser:
     pb.add_argument("--discount", type=float, default=1.0)
     pb.add_argument("--chips", action="store_true",
                     help="add a policy that plays triple captain and bench boost once per half")
+    pb.add_argument("--swap-chips", action="store_true",
+                    help="add a policy that plays free hit and wildcard once per half")
+    pb.add_argument("--chip-min", type=float, default=0.0,
+                    help="least predicted gain per gameweek for the --swap-chips policy to play a "
+                         "chip before the end of its half")
     pb.add_argument("--horizon-models", action="store_true",
                     help="lgbm_xp uses per-horizon models for later gameweeks, not persistence")
     pb.add_argument("--min-history", type=int, default=5)
@@ -161,6 +167,7 @@ def planner_backtest(store: Store, args: argparse.Namespace) -> None:
     from fpl.planbacktest import (
         DEFAULT_POLICIES,
         PLANNER_CHIPS,
+        PLANNER_SWAP,
         ceiling_points,
         chip_log,
         season_inputs,
@@ -188,14 +195,18 @@ def planner_backtest(store: Store, args: argparse.Namespace) -> None:
               f"({ceiling / len(first):.1f}/GW, fresh squad each GW)")  # fmt: skip
         for name, gws in inputs.items():
             start = start_squad(gws[0], info)
-            policies = (*DEFAULT_POLICIES, PLANNER_CHIPS) if args.chips else DEFAULT_POLICIES
+            policies = list(DEFAULT_POLICIES)
+            if args.chips:
+                policies.append(PLANNER_CHIPS)
+            if args.swap_chips:
+                policies.append(replace(PLANNER_SWAP, chip_min=args.chip_min))
             runs = [simulate(gws, info, pol, horizon=args.horizon, discount=args.discount,
                              start=start) for pol in policies]  # fmt: skip
             print(f"-- predictor {name}")
             print(format_summary(summarize(runs)), flush=True)
             for run in runs:
-                if run.policy == PLANNER_CHIPS.name:
-                    print(f"   chips played: {chip_log(run)}", flush=True)
+                if run.policy in (PLANNER_CHIPS.name, PLANNER_SWAP.name):
+                    print(f"   {run.policy} chips played: {chip_log(run)}", flush=True)
 
 
 def suggest_transfers(store: Store, args: argparse.Namespace, entry_id: int) -> None:
