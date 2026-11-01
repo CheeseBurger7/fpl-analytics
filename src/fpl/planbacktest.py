@@ -11,13 +11,22 @@ results of g..g+j-1. Instead a player's predicted points for g+j are his latest 
 prediction times the number of fixtures he has in g+j (the schedule is known in advance), i.e.
 persistence. ``horizon=1`` needs no such assumption.
 
-Chips (``Policy.chips``, bench boost and triple captain only; they leave the squad alone): one of
-each per half (GW1-19, GW20-38). Before each gameweek the policy compares, for the squad it has just
-chosen, the predicted gain of playing the chip now with playing it in each later gameweek of the
+Chips (``Policy.chips``): one of each per half (GW1-19, GW20-38). Before each gameweek the policy
+compares the predicted gain of playing the chip now with playing it in each later gameweek of the
 window (to the end of the half) and plays it now if now is the best and the gain is at least
 ``chip_min``, or in the last gameweek of the half rather than lose it. Triple captain adds the
-captain's points again; bench boost adds the points of every bench player who played. Free hit and
-wildcard are not simulated (they need predictions of a whole second squad).
+captain's points again; bench boost adds the points of every bench player who played (both are
+judged on the squad the policy has just chosen).
+
+Free hit and wildcard (``freehit`` / ``wildcard``) are decided *before* the normal transfer plan and
+replace it that gameweek (one chip per gameweek, never in the first). Both buy a fresh squad with
+the budget the current squad sells for (selling prices) plus the bank, chosen on the predictions
+(``freehit``: this gameweek only, then the old squad comes back; ``wildcard``: the next
+``wc_horizon`` gameweeks, persistence beyond the first, and it is kept), with no hit and no free
+transfer used or added (as in ``fpl.replay``). Their predicted gain is the fresh squad's best XI
+minus the current squad's best XI on the same points (summed over ``wc_horizon`` for the wildcard
+and divided by it, so ``chip_min`` is per gameweek for every chip). It ignores that normal
+transfers could close part of the gap, so it overstates the gain; ``chip_min`` guards against that.
 
 ``simulate`` is pure (no database); ``season_inputs`` builds its inputs from the walk-forward data.
 """
@@ -52,17 +61,20 @@ class Policy:
     name: str
     max_transfers: int = 0  # 0 = never transfer
     margin: float = 1.0  # ``best_plan`` margin
-    chips: tuple[str, ...] = ()  # subset of ("3xc", "bboost")
-    chip_min: float = 0.0  # least predicted gain to play a chip before the end of its half
+    chips: tuple[str, ...] = ()  # subset of ("3xc", "bboost", "freehit", "wildcard")
+    chip_min: float = 0.0  # least predicted gain (per gameweek) to play a chip before its half ends
     chip_window: int = 6  # gameweeks looked ahead when timing a chip
+    wc_horizon: int = 4  # gameweeks a wildcard squad is chosen for
 
 
 HOLD = Policy("hold")
 PLANNER = Policy("planner", max_transfers=3, margin=1.0)
 PLANNER_HITS = Policy("planner_hits", max_transfers=3, margin=0.0)
 PLANNER_CHIPS = Policy("planner_chips", max_transfers=3, margin=1.0, chips=("3xc", "bboost"))
+PLANNER_SWAP = Policy("planner_swap", max_transfers=3, margin=1.0, chips=("freehit", "wildcard"))
 DEFAULT_POLICIES = (HOLD, PLANNER, PLANNER_HITS)
 HALF_END = (19, 38)  # last gameweek of each chip half
+SWAP_CHIPS = ("freehit", "wildcard")  # replace the squad instead of adding to a gameweek's score
 
 
 @dataclass(frozen=True)
@@ -211,6 +223,21 @@ def chip_gains(
     return out
 
 
+def _week_points(
+    gw: GwInput,
+    info: Mapping[int, tuple[int, int]],
+    squad: Sequence[int],
+    xi: Sequence[int],
+    captain: int,
+) -> float:
+    """Actual points of the chosen XI and captain (auto-subs when the minutes are known)."""
+    if gw.minutes is None:
+        return score_selection(Selection(tuple(squad), tuple(xi), captain, 0.0, 0), gw.actual)
+    bench = [i for i in squad if i not in set(xi)]
+    return autosub_points(xi, captain, bench, {i: info[i] for i in squad}, gw.predicted,
+                          gw.actual, gw.minutes)  # fmt: skip
+
+
 def _played(gw: GwInput):
     return (lambda i: True) if gw.minutes is None else (lambda i: gw.minutes.get(i, 0) > 0)
 
@@ -253,19 +280,77 @@ def _choose_chip(
 ) -> str | None:
     """Chip to play in gameweek i (or None): see the module docstring for the rule."""
     half = _half(gws[i])
-    left = [c for c in policy.chips if (half, c) not in used]
+    left = [c for c in policy.chips if c not in SWAP_CHIPS and (half, c) not in used]
     if not left:
         return None
+    end, window = _chip_window(policy, gws, i)
+    gains = chip_gains(squad, info, horizon_points(gws, i, window, per_fixture), left)
+    return _timed(gains, left, policy.chip_min, i == end)
+
+
+def _chip_window(policy: Policy, gws: Sequence[GwInput], i: int) -> tuple[int, int]:
+    """(index of the last gameweek of i's half in the data, gameweeks to look ahead from i)."""
+    half = _half(gws[i])
     end = i
     while end + 1 < len(gws) and _half(gws[end + 1]) == half:
-        end += 1  # last gameweek of this half in the data
-    window = min(policy.chip_window, end - i + 1)
-    gains = chip_gains(squad, info, horizon_points(gws, i, window, per_fixture), left)
+        end += 1
+    return end, min(policy.chip_window, end - i + 1)
+
+
+def _timed(
+    gains: Mapping[str, Sequence[float]], left: Sequence[str], chip_min: float, last: bool
+) -> str | None:
+    """Chip to play now: one whose gain now is its best in the window and at least ``chip_min``
+    (the one with the biggest gain if several), or any left in the half's last gameweek."""
     now = {c: g[0] for c, g in gains.items()}
-    ready = [c for c in left if now[c] >= max(gains[c]) and now[c] >= policy.chip_min]
-    if not ready and i == end:
-        ready = left  # use it or lose it
+    ready = [c for c in left if now[c] >= max(gains[c]) and now[c] >= chip_min]
+    if not ready and last:
+        ready = list(left)  # use it or lose it
     return max(ready, key=lambda c: now[c]) if ready else None
+
+
+def swap_gain(players: Sequence[Player], squad: Sequence[int], budget: int,
+              points: Mapping[int, float]) -> float:
+    """Predicted gain of a fresh squad (cost <= ``budget``) over keeping ``squad``: the best XI
+    and captain of each, on the same ``points``."""
+    pool = [replace(p, points=points.get(p.id, 0.0)) for p in players]
+    return optimize_squad(pool, budget=budget).objective - pick_lineup(pool, squad).objective
+
+
+def _choose_swap_chip(
+    policy: Policy,
+    gws: Sequence[GwInput],
+    i: int,
+    pool: Sequence[Player],
+    squad: Sequence[int],
+    budget: int,
+    per_fixture: Mapping[int, float],
+    used: set[tuple[int, str]],
+) -> str | None:
+    """Free hit or wildcard to play in gameweek i (or None), judged on the squad as it stands
+    before this gameweek's transfers. A wildcard's gain is over ``wc_horizon`` gameweeks starting
+    at each candidate gameweek, per gameweek, from persistence forecasts made now."""
+    half = _half(gws[i])
+    left = [c for c in policy.chips if c in SWAP_CHIPS and (half, c) not in used]
+    if not left:
+        return None
+    end, window = _chip_window(policy, gws, i)
+    wc = policy.wc_horizon
+    pts = horizon_points(gws, i, window + wc - 1, per_fixture)
+    gains: dict[str, list[float]] = {}
+    for c in left:
+        if c == "freehit":
+            gains[c] = [swap_gain(pool, squad, budget, p) for p in pts[:window]]
+        else:
+            gains[c] = []
+            for j in range(window):
+                total: dict[int, float] = defaultdict(float)
+                for p in pts[j : j + wc]:
+                    for k, v in p.items():
+                        total[k] += v
+                n = len(pts[j : j + wc])
+                gains[c].append(swap_gain(pool, squad, budget, total) / n)
+    return _timed(gains, left, policy.chip_min, i == end)
 
 
 def simulate(
@@ -296,21 +381,36 @@ def simulate(
                 per_fixture[p] = v / n
         pool_ids = (set(gw.predicted) | squad) & set(info)
         pool = _players(pool_ids, info, gw.price)
+        sell = {i: selling_price(buy[i], gw.price[i]) for i in squad}
+        budget = bank + sum(sell.values())
+        swap = (_choose_swap_chip(policy, gws, i, pool, sorted(squad), budget, per_fixture, used)
+                if i else None)  # fmt: skip
+        if swap:  # free hit / wildcard: a fresh squad instead of this gameweek's transfers
+            used.add((_half(gw), swap))
+            plan = plan_transfers(
+                pool, horizon_points(gws, i, 1 if swap == "freehit" else policy.wc_horizon,
+                                     per_fixture),
+                squad, bank=bank, free_transfers=free, max_transfers=0, discount=discount,
+                sell_prices=sell, chip=swap, chip_gw=0)[0]  # fmt: skip
+            new = set(plan.chip_squad)
+            points = _week_points(gw, info, plan.chip_squad, plan.xi[0], plan.captain[0])
+            if swap == "freehit":
+                run.results.append(GwResult(gw.key, points, 0, 0, (), (), free, bank, swap))
+            else:
+                bank = budget - sum(gw.price[p] for p in new)
+                buy = {p: buy[p] if p in buy else gw.price[p] for p in new}
+                run.results.append(GwResult(
+                    gw.key, points, 0, len(new - squad), tuple(sorted(squad - new)),
+                    tuple(sorted(new - squad)), free, bank, swap))  # fmt: skip
+                squad = new
+            continue  # a chip week uses no free transfer and adds none
         pts = horizon_points(gws, i, horizon, per_fixture)
         k_max = policy.max_transfers if i else 0
-        sell = {i: selling_price(buy[i], gw.price[i]) for i in squad}
         plans = plan_transfers(pool, pts, squad, bank=bank, free_transfers=free,
                                max_transfers=k_max, discount=discount,
                                sell_prices=sell)  # fmt: skip
         plan = best_plan(plans, policy.margin)
-        if gw.minutes is None:
-            sel = Selection(plan.squad, plan.xi[0], plan.captain[0], plan.gross, 0)
-            points = score_selection(sel, gw.actual) - plan.hit
-        else:
-            info_ = {i: info[i] for i in plan.squad}
-            bench = [i for i in plan.squad if i not in set(plan.xi[0])]
-            points = autosub_points(plan.xi[0], plan.captain[0], bench, info_, gw.predicted,
-                                    gw.actual, gw.minutes) - plan.hit  # fmt: skip
+        points = _week_points(gw, info, plan.squad, plan.xi[0], plan.captain[0]) - plan.hit
         chip = _choose_chip(policy, gws, i, plan.squad, info, per_fixture, used)
         if chip:
             used.add((_half(gw), chip))
