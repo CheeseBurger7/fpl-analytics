@@ -28,7 +28,7 @@
   actuals; hits and free transfers tracked; horizon 1 is the reference (no leak). Horizon > 1 uses
   persistence (latest per-fixture prediction x known fixture count) because dataset rows of later
   GWs contain results the planner could not know. Horizon 4 did not beat horizon 1. Compare
-  policies/predictors only; absolute points are optimistic (see task log caveats).
+  policies/predictors only; absolute points are optimistic (`xp` leak, see below).
 - **Default predictor is leak-free `lgbm` (2026-10-29, supersedes "`ep` stands in for `xp`").**
   `lgbm_xp` learned to trust a leaky `xp` (captured 0.87-0.88 vs 0.38-0.42 leak-free; `xp_prev` adds
   nothing), so it likely over-weights live `ep`. `fpl transfers` and `fpl backtest-planner` now default
@@ -49,13 +49,13 @@
   captured fraction by <= 0.011 on 2022-25; not distinguishable from noise.
 - **Component models and lagged rates are not adopted.** Captured fraction on 2022-25 (leak-free):
   lgbm 0.400 mean vs comp_x 0.402; per-season differences within +-0.03 noise. Code reverted;
-  `lgbm` stays the leak-free model. Lever left is news, not form (task log 2026-10-28).
+  `lgbm` stays the leak-free model. Lever left is news, not form.
 - **Chip timing: no clever rule yet.** Backtest (2023-25): waiting for the best predicted gain within 6 or
   19 GWs (+23..+44 per season) is not distinguishable from playing the chip at once (+31 / +32);
   later-GW predictions are persistence x fixture count, which cannot see much. Keep the chips as an
   option in the planner; decide timing by hand with `fpl transfers --chips --horizon 8`.
 - **`xp` is suspect; `xp_prev` is the leak-free check.** vaastav `xp` of a gameweek appears to include
-  that gameweek's result (haul test, task log 2026-10-27). Report `lgbm` and `lgbm_xp` (and `xp_prev`
+  that gameweek's result (haul test, 2026-10-27). Report `lgbm` and `lgbm_xp` (and `xp_prev`
   variants via `--lag-xp`) together; never quote `lgbm_xp` / planner totals as realistic.
 - **`xp` is split over DGW fixture rows.** vaastav repeats the round `xp` on each row; dividing by the
   row count makes it a per-fixture forecast that sums to the round (2026-10-29).

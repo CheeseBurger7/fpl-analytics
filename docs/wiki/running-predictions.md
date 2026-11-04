@@ -3,7 +3,7 @@
 Recipe for GW N (the next deadline). Windows / PowerShell, run from the repo root with the venv
 (`.venv\Scripts\fpl`). `FPL_ENTRY_ID` must be set in the user environment (never write it in the repo).
 Predictor background: [glossary.md](glossary.md); `xp` leak caveat: [decisions.md](decisions.md) and the
-`xp` timing entry in [task-log.md](task-log.md).
+`xp` timing decision in [decisions.md](decisions.md).
 
 ## 1. Refresh data (before the deadline, ideally the day of)
 ```
@@ -90,9 +90,11 @@ fpl blind-score --gw N                 # achieved vs hindsight ceiling, captured
 fpl blind-score --all                  # all finished GWs with means
 ```
 Freeze **before the first kickoff** or the comparison is not blind. Record the numbers in
-[task-log.md](task-log.md); the live `ep` history is the only clean test of the `xp` question.
+[status.md](status.md); the live `ep` history is the only clean test of the `xp` question.
 
 ## Gotchas
+- Two `fpl` commands cannot open the DuckDB file at once (the second dies with an IO error): run them
+  one after the other.
 - Season strings are `2026-27`; the CLI default `--season` is the current one.
 - Prices are tenths of a million (`now_cost` 62 = 6.2m); `bank` too.
 - `fpl.live` features for an unplayed GW come from TEMP tables; the main tables are untouched.

@@ -10,7 +10,7 @@ a better MAE can still pick worse squads if it mis-ranks the top players.
 - **`xp`**: FPL's own expected points per player-fixture in the historical vaastav data (from
   2020-21). Baseline `fpl_xp`, and an input to `lgbm_xp`.
 - **`ep`**: the same idea from the live API (`ep_this` / `ep_next` in the snapshot), but in practice `form` x chance of playing (data.md). Baseline
-  `fpl_ep` in `blind-pick`. Only one-GW evidence that `ep` can replace `xp` (task log).
+  `fpl_ep` in `blind-pick`. Only one-GW evidence that `ep` can replace `xp` (status.md).
 - **`rolling_mean_5`**: mean points over the player's last 5 fixtures played (`pts_per_fix_5`).
 - **`career_mean`**: mean points over all prior fixtures. **`constant_2`**: predicts 2 for everyone.
 - **`lgbm`**: LightGBM regressor ([`fpl.model`](../../src/fpl/model.py)) on our own features
