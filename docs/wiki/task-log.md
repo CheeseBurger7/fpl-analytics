@@ -1,516 +1,59 @@
-# Task log (newest first)
+# Task log: next task and improvements
 
-## 2026-10-30: Free hit and wildcard in the season backtest (branch feat/odds-features, uncommitted)
-- `fpl.planbacktest`: `Policy.chips` accepts `freehit` / `wildcard` (new `PLANNER_SWAP`, `wc_horizon` 4,
-  `swap_gain`, `_choose_swap_chip`, `_week_points`; docstring has the rules). Decided before the normal
-  transfer plan and replacing it that gameweek (never GW1, one chip per GW, once per half): a fresh squad
-  bought with bank + selling value (`plan_transfers(chip=, chip_gw=0, max_transfers=0)`), scored on actuals
-  with auto-subs, no hit, no free transfer used or added (`fpl.replay` rule). Free hit: squad reverts;
-  wildcard: kept (purchase prices tracked). Timing as for the other chips (play now if its predicted gain
-  is the best in the window and >= `chip_min`, forced in the half's last GW); gain = fresh best XI minus
-  current squad's best XI on the same persistence points (wildcard summed over `wc_horizon`, per GW).
-  CLI: `fpl backtest-planner --swap-chips [--chip-min X]`. 3 new tests, 114 pass, ruff clean.
-- Result (`--predictor lgbm`, horizon 1, total points `planner` -> `planner_swap`, seasons 2022-23 /
-  2023-24 / 2024-25; `planner` 2107 / 2048 / 2214): `--chip-min 0`: 2141 / 2048 / 2241 (+34 / 0 / +27);
-  `--chip-min 3`: 2141 / 2048 / 2158 (+34 / 0 / -56); `--chip-min 6`: 2141 / 2080 / 2158 (+34 / +32 /
-  -56). Means +20 / -7 / +3. **No clear gain:** the sign flips with the threshold and one season's
-  timing (wildcard GW3 vs GW4 in 2024-25) moves the total by ~80, as large as the `planner` vs
-  `planner_hits` noise. Chips are played early (free hit GW2-8, wildcard GW2-9, second half GW20-33),
-  not at special weeks; the predicted gain ignores that normal transfers close part of the gap, so it is
-  inflated. Free hit / wildcard are left opt-in; do not read the result as a chip strategy.
-- Not tried: timing from fixture swings (needs the real DGW / BGW GWs of each season to show up in
-  persistence points; they did not drive the choices here), gain net of the best normal plan, more seasons.
-- Gotcha: two `fpl` commands cannot open the DuckDB file at once (the second dies with an IO error), so
-  run backtests one after the other.
+Forward-looking only. Finished work lives in [status.md](status.md) (Done table, one line per PR) and
+[decisions.md](decisions.md) (conclusions and numbers). The long per-task entries up to 2026-11-03 were
+removed on 2026-11-04; recover them with `git log -p -- docs/wiki/task-log.md` (last full version: commit
+`55b5c13`, plus the GW9 notes below).
 
-## 2026-10-30: GW9 re-freeze and start of the chips task
-- `fpl snapshot` (snapshot 9), `fpl entry`, `fpl blind-pick --gw 9 --model` overwrote
-  `blind_gw9.json` (the 2026-10-26 freeze was deleted at the user's request). `blind-pick` cannot
-  see a transfer not yet stored (no GW9 picks), so the user's squad (GW8 picks, Pedro -> Evanilson, free
-  transfer used, 0 free for the plan) was added to each predictor's `entry` with `pick_lineup` from a
-  scratchpad script. Entry XI by predictor: rolling_mean_5 73.6 (C Haaland), fpl_ep 75.9 (C Haaland),
-  `lgbm_xp(ep)` 51.5 (C Evanilson). Fresh XI `lgbm_xp(ep)` 67.2. Chips left: bench boost only.
-- Open question: after `fpl entry` on 2026-10-30, `entry_transfers` has no GW9 row (latest is GW8,
-  2026-10-23) and `entry_picks` stops at GW8, although the user says Pedro -> Evanilson was made. Picks
-  for an unstarted GW are not exposed by the public endpoint, but the transfers list was expected to
-  include the move; cause unverified (check on the FPL site that the transfer is confirmed).
-- **Finding for chip timing:** `fixture_snapshots` (snapshot 9) schedules exactly 10 matches in each of
-  the 38 gameweeks, every team once: **no blank or double gameweeks exist yet**. Reschedules (cup
-  clashes) will create them later, so fixture-aware bench-boost timing has nothing to exploit now;
-  re-check after each snapshot.
+## Next task: collect `ep`, then news / fixture-aware chip timing
+Start from `main`; read `status.md`, `glossary.md`, `decisions.md`.
+1. **Every GW (standing chore):** `fpl snapshot` before the deadline, `fpl blind-pick --gw N --model`
+   before the first kickoff (add the user's squad as `entry`, see below), `fpl transfers --gw N`; after
+   the GW `fpl snapshot`, `fpl blind-score --gw N` and `--all`. Record the numbers in `status.md`. The live
+   `ep` history is the only clean test of the `xp` / `ep`-as-`xp` question; GW8-9 exist so far.
+2. **GW10 (deadline after 2026-11-03):** transfer options for GW10-12 are below; the user had not decided.
 
-## 2026-10-29: Odds-derived features and backtest (branch feat/odds-features, code reverted)
-- Joined `match_odds` to the feature SQL and added six features: `odds_win_p` / `odds_draw_p` /
-  `odds_loss_p` (Bet365 1X2, overround-normalised, player's side), `odds_own_xg` / `odds_opp_xg`
-  (total goals from the normalised average Over/Under 2.5 price, `2.5 + 4 * (p_over - 0.456)`, split by
-  supremacy `-ah_line`; clamped 0.1-5; NaN before 2019-20) and `odds_cs_p = exp(-odds_opp_xg)`.
-  Home / away clubs come from the fixture's `opponent_team` values, not `hist_players.team_id`, so
-  mid-season movers join correctly. Coverage of the join: 100% of rows in every season (xG features
-  0% for 2016-19 by design). Mean `odds_own_xg` 1.38-1.52, `odds_cs_p` 0.24-0.28 per season. Per-horizon
-  models dropped the six columns (`fpl.horizon.DROPPED`). 111 tests passed with the change.
-- Backtest (`fpl backtest --season 2022-23 --season 2023-24 --season 2024-25 --step 0 --by-season
-  --model --captured`), `lgbm` before -> after: captured 0.415 / 0.370 / 0.416 -> **0.419 / 0.386 /
-  0.440** (mean 0.400 -> 0.415, +0.015); MAE 1.117 / 0.991 / 1.053 -> 1.115 / 0.990 / 1.048; Spearman
-  0.693 / 0.679 / 0.692 -> 0.694 / 0.679 / 0.693. Gain has the same sign in all three seasons but is
-  inside the +-0.03 noise, so by the "adopt only a clear mean gain" rule **not adopted; code reverted**.
-  `lgbm_xp` (leaky) 0.860 / 0.867 / 0.869 (essentially unchanged).
-- Patch kept only in the session scratchpad (`odds-features.patch`); rebuild from the notes above. Not
-  tried: odds-only features restricted to 2019-20+ training, `psc_*` closing prices (later than a
-  deadline), Over/Under + handicap inversion by a proper Poisson solve.
-- GW9 advice run (snapshot 8, 2026-10-30; squad = GW8 picks with Pedro -> Evanilson made by hand, bank
-  1.6 at now_cost, 0 free): unchanged XI `lgbm` 46.3 / `lgbm_xp` 51.5. Best single -4 hit over GW9-12:
-  `lgbm` Gibbs-White -> Mbeumo +3.4, `lgbm_xp` Gibbs-White -> Neto +12.7; GW9 alone no hit pays. Captain:
-  `lgbm` Palmer 5.3 vs Evanilson 3.8, `lgbm_xp` Evanilson 7.2 vs Palmer 3.1 (`ep_next` is form). The
-  `blind_gw9.json` `fresh.predicted_points` (fpl_ep 95.0) is the best unconstrained 15-man squad, not the
-  user's squad. Not frozen with the new snapshot.
-- Live path not touched (no Premier League odds rows for upcoming GWs on 2026-10-29). If odds ever are
-  adopted, the live path reads `match_odds` directly and gets NaN for unplayed GWs.
+## Current-GW notes (GW10-12, run 2026-11-03, squad = GW9 picks, bank 1.7, 1 free, bench boost left)
+- `lgbm` (default): hold 150.7; best 1 transfer Gibbs-White -> Mbeumo 155.7 (+5.0); 2 transfers 155.3;
+  3 transfers 154.1. Captain GW10 Haaland.
+- `fpl_ep`: hold 232.5; Calvert-Lewin -> N.Jackson 244.5 (+12.0); best 3 transfers 253.0 (two hits, +3.5
+  over 2). Captain Konsa. Totals run ~80 above `lgbm` (flat `ep`), compare differences only.
+- `lgbm_xp`: Davis -> De Cuyper 181.2, best 3 transfers 200.4 (+49.5): not credible.
+- No transfer is shared by `lgbm` and `fpl_ep`. Tiebreaker not done yet: fixtures for Mbeumo, Gibbs-White,
+  N.Jackson, Calvert-Lewin over GW10-12 (the horizon ignores fixture difficulty).
+- Gabriel (ARS DEF, 8.0m): `lgbm` 13.1 over GW10-12 (rank 6), `fpl_ep` 24.6 (rank 4), `lgbm_xp` 11.3
+  (rank 40). Not affordable with 1.7 bank in any single defender swap (nearest: Calafiori, 0.4m short), and
+  no planner line picks him. Arsenal FDR GW10-12: 2 / 3 / 4. Idea: free bank with a downgrade, then
+  Calafiori -> Gabriel without a hit.
+- GW9 blind-score (2026-11-03): see `status.md`. Plain `lgbm` was not in the GW9 freeze, so it is unscored.
 
-## 2026-10-29: Open questions pass (branch feat/xp-fix-odds)
-- **DGW `xp` (fixed):** on a double-gameweek vaastav repeats the round's `xp` on both fixture rows
-  (identical in 100% of 3,360 DGW player-rounds 2020-21..2024-25; mean 5.7 on DGW rows vs 2.7 on single
-  rows). The harness summed it per fixture row, double-counting. `load_dataset` now divides `xp` by the
-  player's row count in the round (`xp_prev` becomes genuinely per fixture). Test added; 105 tests pass.
-  Effect (`--step 0 --captured`, 2022-23 / 2023-24 / 2024-25): `lgbm_xp` captured 0.770 / 0.805 / 0.833 ->
-  **0.872 / 0.882 / 0.881**, MAE 0.797 / 0.677 / 0.699 -> 0.698 / 0.600 / 0.648; `fpl_xp` captured 0.679 /
-  0.629 / 0.667 -> 0.683 / 0.640 / 0.661. Leak-free `lgbm` and `lgbm_xp_prev` unchanged (0.42 / 0.38 / 0.41).
-  Cleaner `xp` makes the leak easier to exploit: the gap to `lgbm_xp_prev` (~0.41) is now ~0.47. Earlier
-  `lgbm_xp` / planner backtest numbers (glossary reference table, chips entry) predate the fix and are
-  understated on `xp` but remain leak-inflated; the planner backtest was not rerun.
-- **`ep_this` (answered):** not a separate per-GW forecast. It equals `ep_next` except where availability
-  differs: both are the same base `ep` times `chance_of_playing_{this,next}_round` / 100 (Calafiori
-  5.3 vs 4.0 at 75%). 11 of 669 players differ in snapshot 1, 34 in snapshot 6. Use `ep_next`.
-- **vaastav coverage (answered):** upstream still has 2026-27 only to GW6 on 2026-10-29. Only 3 data
-  commits so far: GW1 (2026-08-28), then one PR (#226, merged 2026-10-22) covering GW2-6; it comes in
-  batches ~2.5 weeks behind (GW8 finished 2026-10-26), with `xP2` / `xP6` files missing. Do not wait for
-  it; the `element_history` adapter is the source for current-season rows.
-- **Is there a historical `ep` to train `lgbm_ep` on? No.** vaastav's `xP{N}.csv` files (2020-21..2024-25,
-  nearly every GW) are identical to the `xp` column of round N (corr 1.0), so they are not an independent
-  pre-deadline capture. Their round-level corr with round-N points is 0.72-0.78 but only 0.47-0.50 with
-  round N+1 points (2022-23..2024-25 spot checks), more evidence `xp` is recorded after the GW. A clean
-  `lgbm_ep` needs live snapshots accumulated over many GWs.
-- **Default switched to leak-free `lgbm`:** `fpl transfers --predictor` and `fpl backtest-planner
-  --predictor` now default to `lgbm` (backtest-planner also accepts `lgbm`); `fpl_xp` / `lgbm_xp` stay
-  opt-in. `blind-pick --model` still logs `lgbm_xp(ep)` for the live track record. See decisions.md.
-- **GW9 forecast (snapshot 7, 2026-10-29), squad = GW8 squad with Pedro -> Evanilson, bank ~1.7 at
-  now_cost:** `lgbm` XI Raya; Van Hecke, Calafiori, Konsa; Palmer (C), Rogers, Tavernier, Gibbs-White;
-  Haaland, Calvert-Lewin, Evanilson = 46.4 points incl. captain bonus (Palmer 5.3). `lgbm_xp(ep)` differs
-  (captain Evanilson 7.2, 51.5 points). Calafiori is a 75% doubt. Not frozen (`blind-pick` not run).
-- **`ep_next` is `form` (found 2026-10-29):** in snapshot 7, `ep_next == form` for 334 of 361 players with
-  `ep_next > 0` (92%); the other 27 are `form x chance_of_playing_next_round` (Calafiori 5.3 -> 4.0 at
-  75%), injured / suspended players get 0. 622 of 669 equal over all players, snapshots 1-6 the same
-  (624-629). So `ep` is recent average points with an availability adjustment: no fixture or opponent
-  information. Likely cause of the vaastav `xp` leak: `xp` / `xP{N}` recorded after GW N is `form` that
-  already includes GW N's points. Live `ep` is clean but is a form chaser: `lgbm_xp(ep)` makes Evanilson
-  (ep 8.3) GW9 captain at 7.2 while `lgbm` says 3.6.
-- **Venue / clean-sheet fixture-difficulty features (tried, reverted, never merged):** six new features,
-  all lagged and leak-free: `opp_cs_6` (opponent clean-sheet rate, last 6 fixtures), and per venue, over a
-  team's last 6 fixtures at that venue only (the opponent's record away when the player's side is at
-  home, and vice versa; the player's own side's record at this venue): `opp_cs_venue_6`,
-  `opp_ga_venue_6`, `opp_gf_venue_6`, `own_cs_venue_6`, `own_gf_venue_6`. Walk-forward `lgbm`, `--step 0
-  --captured`, 2022-23 / 2023-24 / 2024-25 (35 / 37 / 35 GWs, same command before and after): captured
-  0.415 / 0.370 / 0.416 -> 0.422 / 0.356 / 0.417 (means 0.400 -> 0.398); MAE 1.117 / 0.991 / 1.053 ->
-  1.115 / 0.992 / 1.055; Spearman 0.693 / 0.679 / 0.692 -> 0.692 / 0.678 / 0.691. No gain (noise
-  about +-0.03), so the code was discarded. Implementation notes if rebuilt: add `was_home` to
-  `team_fix`, a `venue_gw` / `venue_roll` pair partitioned by `(team_name, was_home)`, join the
-  opponent with `was_home = NOT b.was_home`; per-horizon models (`fpl.horizon.DROPPED`) must drop the
-  fixture-specific columns. Patch kept only in the session scratchpad. Feature gain shares of the
-  current model: recent points ~51%, minutes ~30%, price 6%, fixture context ~5%, ICT ~5%.
-- **Match odds source checked (no code yet):** football-data.co.uk, `mmz4281/{YYZZ}/E0.csv` (plain
-  redirect from `www.` to the bare domain: follow redirects). 380 Premier League matches per season 2016-17..2025-26 and 80 for
-  2026-27 (to 2026-10-25), all with Bet365 / Pinnacle-closing 1X2 odds; Over/Under 2.5 and Asian handicap
-  lines (Avg / Max / Pinnacle) from 2019-20 only. Team names differ for 6 clubs (Man United, Tottenham,
-  Coventry, Sheffield United, ...) vs `hist_teams`, so a small alias map is enough. **Upcoming
-  fixtures:** `fixtures.csv` had 0 Premier League rows on 2026-10-29 (only lower leagues, next 2-3 days),
-  so odds for a GW may appear only a few days before it: check before relying on them live. Next step:
-  an `odds` table, features (implied win / draw probability, expected goals from O/U + handicap,
-  implied clean-sheet probability), backtest vs `lgbm`.
-- **Availability news in live predictions:** `planner.availability(con, gw)` reads the latest snapshot's
-  `chance_of_playing_next_round` (only when `gw` is that snapshot's next GW; unflagged = fit) and
-  `horizon_predictions(..., news=True)` scales the first GW of `lgbm` / `rolling_mean_5` by it (`fpl_ep`
-  and `lgbm_xp` already carry it through `ep`). Snapshot 7 flags: 161 fit-100, 29 doubtful (25/50/75),
-  63 injured, 4 suspended, 106 unavailable (all 0). GW9: Calafiori 2.63 -> 1.98 (75%) and drops out of
-  the XI; XI total 46.4 -> 46.1. It is a rule, not a trained feature: only 7 snapshots hold the flag, so
-  it cannot be backtested; judge it with `blind-score` and train on it once enough GWs are stored.
-- **Odds ingested (`fpl.odds`, `fpl import-odds`, table `match_odds`):** 11 seasons 2016-17..2026-27,
-  3,880 matches (380 per past season, 80 for 2026-27 to 2026-10-25), re-runnable (a season is replaced,
-  never duplicated; the current season is always re-downloaded, past ones come from the cache in
-  `data/raw/footballdata/`). All clubs matched to `hist_teams` ids via `odds.team_key` (alias map for
-  Man United, Tottenham, Coventry, Hull, ...); results agree with vaastav scores for all 380 matches of
-  every past season. Columns: Bet365 / Pinnacle pre-match 1X2, market-average 1X2, Over/Under 2.5 and
-  Asian handicap (average) from 2019-20 (NULL in 2016-17..2018-19), Pinnacle / average closing 1X2
-  (`avgc_*` is NULL before 2019-20). Overround about 1.06. 5 tests in `tests/test_odds.py`.
-  Use pre-match columns for features (closing prices are the last price before kickoff, later than a
-  deadline decision). Next: features (implied probabilities, expected goals, clean sheet), backtest.
-- **Not answerable yet:** leak share of `xp` and whether `ep` as `xp` holds past GW8 both need a live
-  `ep` history; only GW8-9 exist. Collect via the standing chores (snapshot before each deadline).
+## Improvements to consider (none started)
+Model
+- **Availability news as a trained feature:** snapshots hold `chance_of_playing_next_round` only from GW8;
+  today it is a live multiplier on GW1 of `lgbm` / `rolling_mean_5`. Train on it once many GWs are stored.
+- **Model trained on stored live `ep`** (`lgbm_ep`): needs many GWs of snapshots; vaastav has no clean
+  historical `ep` (its `xp` / `xP{N}` files leak the GW result).
+- **Fixture-aware later-GW predictions:** horizon > 1 is persistence x fixture count and ignores
+  difficulty; a rating from `fixture_snapshots` difficulty fields is untried.
+- Untried baselines: RF / Ridge, an ensemble. Odds features were no gain (+0.015, noise); if revisited:
+  odds-only training from 2019-20, Poisson solve for xG instead of the linear Over/Under approximation.
+  Live odds for upcoming GWs are not available until a few days before kickoff (check
+  football-data `fixtures.csv`).
+- Fix mid-season-mover team features (see `data.md`).
+Planner / chips
+- Chip timing: fixture-aware predictions so timing can beat "play early"; gain net of normal transfers;
+  selling-price-aware chip squads. **No blank or double gameweeks exist yet** (every team plays once in
+  each of the 38 GWs in snapshot 9); re-check after each snapshot before planning bench boost.
+- Multi-step transfer plans; live selling prices from `entry` data (the backtest already models them).
+- The planner backtest was not rerun after the DGW `xp` fix; absolute totals stay optimistic.
+Tooling
+- `fpl lineup` / `fpl squad` CLI command to replace the Python snippets in `running-predictions.md`.
+- `blind-pick` cannot see a transfer not yet stored (no GW N picks until the deadline passes); add the
+  user's squad to `entry` by hand, or let `blind-pick` take an explicit squad.
+- Differentials and explorer (original scope).
 
-## Done 2026-10-29 (brief kept for reference): odds-derived features and backtest
-Start from `main` after PR #23 (DGW `xp` fix, leak-free default, `match_odds` ingest) is merged; read
-`status.md`, `data.md`, `decisions.md` and the 2026-10-29 entry below. `fpl import-odds` fills `match_odds`.
-1. **Join odds to the feature rows** (`fpl.features`): per player-fixture, home id = `team_id` if
-   `was_home` else `opponent_team` (away id the other way), joined on `(season, home_team_id,
-   away_team_id)`. Caveat: `hist_players.team_id` is the end-of-season club, so mid-season movers join
-   wrongly or not at all (see data.md); NULL is fine.
-2. **Features** (pre-match columns only, never `psc_*` / `avgc_*`, which are later than a deadline):
-   overround-normalised win / draw / loss probability of the player's side (`b365_*` has all 11
-   seasons; `avg_*`, Over/Under 2.5 and `ah_line` only from 2019-20, NULL before: LightGBM takes NaN),
-   expected goals for / against from Over/Under + handicap, implied clean-sheet probability (about
-   `exp(-opponent expected goals)`), and a home / away flag already exists.
-3. **Backtest** with the exact earlier command: `fpl backtest --season 2022-23 --season 2023-24
-   --season 2024-25 --step 0 --by-season --model --captured`. Baseline `lgbm` captured fraction
-   0.415 / 0.370 / 0.416 (mean 0.400), MAE 1.117 / 0.991 / 1.053, Spearman 0.693 / 0.679 / 0.692; noise
-   about +-0.03 per season, so adopt only a clear mean gain. ICT, goal / assist rates, components and
-   venue / clean-sheet features all gave nothing, so expect fixture strength to be the last cheap lever
-   before news. Per-horizon models must drop the fixture-specific columns (`fpl.horizon.DROPPED`).
-4. **Live path:** `fpl.live` builds features for unplayed GWs from TEMP tables, so odds for the upcoming
-   GW must be read there. football-data `fixtures.csv` had 0 Premier League rows on 2026-10-29: check
-   again nearer the weekend; if odds are missing for a GW, predict that GW with the odds columns NaN.
-5. Standing chores still apply (see below): freeze GW9 with `fpl blind-pick --gw 9 --model` before the
-   first kickoff, and after GW9 `fpl snapshot`, `fpl blind-score --gw 9` / `--all`.
-Conventions: short-lived branch + PR, tests with mocked HTTP / in-memory DuckDB, update the wiki, do not
-commit unless asked, no Claude footer in commits or PRs.
-
-## Backlog (written 2026-10-28, still open): collect `ep`, then fixture-aware chip timing
-Start from `main`. Read `status.md`, `glossary.md`, `decisions.md` and the `xp` timing entry below.
-1. Collect `ep`: after GW9 (`fpl snapshot`, `fpl blind-score --gw 9` / `--all`) and every GW. The
-   live `ep` track record is the only clean arbiter for `xp` (see below) and the remaining model lever
-   (news-type input, see the components entry).
-2. Chips: planner / backtest support is in (entry below). Open: (a) fixture-aware later-GW predictions
-   (persistence x fixture count cannot rank blank / double weeks well, chip timing did not beat "play
-   early" in the backtest); (b) free hit / wildcard in the season backtest; (c) selling-price-aware
-   chip squads.
-
-## 2026-10-28: Chips in the planner (branch feat/chips-planner)
-- `plan_transfers(chip=, chip_gw=)`: `3xc` (captain tripled in one horizon GW), `bboost` (whole squad
-  scores that GW), `freehit` (alternative squad y, same budget, that GW only), `wildcard` (y from that GW
-  on). A free hit / wildcard in the first GW returns only the 0-transfer plan. `Plan` gains `chip`,
-  `chip_gw`, `chip_squad`. `evaluate_chips(...)` tries every chip x horizon GW and returns options sorted
-  by gain over the best chip-free plan. 6 tests in `tests/test_planner.py`.
-- `fpl transfers --chips` (use `--horizon 6 --max-transfers 1`; ~1 min, ~23 s for all 4 chips at
-  horizon 4). GW9 live, horizon 6 (lgbm_xp, GW8 squad): bench boost +4.2 predicted points in every GW
-  GW9-14; all four chips at horizon 4: wildcard GW9 +69.3 (17.3/GW), free hit +17.3, triple captain
-  +6.4, bench boost +4.2. Gains are flat across GWs because later-GW predictions are persistence x
-  fixture count and GW9-14 has no double / blank GWs, so this says nothing about timing yet.
-  The wildcard / free hit gains mostly show the flat model preferring cheap in-form attackers.
-- Season backtest (`fpl backtest-planner --chips`, new `planner_chips` policy; `planbacktest.chip_gains`,
-  `chip_week_points`): triple captain and bench boost once per half (GW1-19 / 20-38), timing rule =
-  play now if the predicted gain now is the best in the window to the end of the half (`chip_window`
-  6) and >= `chip_min`, forced in the last GW of a half. Scored on actuals (BB = all squad members who
-  played, TC = effective captain once more). Free hit / wildcard are not simulated.
-  Total points vs `planner` (lgbm_xp, step 0): 2022-23 +34, 2023-24 +23, 2024-25 +44 (about +8-11 per
-  chip). Timing windows (2023-24 / 2024-25): window 1 (play at once) +31 / +32; 6 +23 / +44; 19 +27 / +44.
-  **Smart timing did not beat playing early** (differences within season noise), and chips were
-  mostly played in GW1-2 / GW20-25. Absolute numbers are optimistic (`xp` leak); the chip gain is
-  relative to the same-policy run without chips.
-- Caveats: gain from `evaluate_chips` is relative to no chip in this horizon and ignores the chip's
-  value later in the season; BB assumes every bench player plays (predicted points, no minutes risk).
-  104 tests pass, ruff clean.
-
-## 2026-10-28: Component models + lagged goal/assist/xG features (tried, reverted, never merged)
-Picked as the highest-leverage model idea from the model-family review (below); **no gain, so the
-code was discarded** (branch feat/minutes-model, never committed). Rebuild only if a news feature
-makes it worthwhile; the design is below.
-- New `fpl.components.ComponentPredictor`: six LightGBM models per player-fixture (P(plays), P(60+ min),
-  Poisson goals, Poisson assists, P(clean sheet), residual regressor for bonus / saves / conceded /
-  cards) combined with FPL's scoring values by position. New `features.EXTRA_COLUMNS` (goals, assists
-  per fixture over 5 / 10, cs / bonus / saves / xG / xA per fixture over 10, last-GW minutes), kept out
-  of `FEATURE_COLUMNS`; `COMPONENT_TARGETS` (`y_minutes`, `y_goals`, `y_assists`, `y_cs`, `y_other`,
-  which sum back to `target`) load into the dataset. `fpl backtest --components` adds `lgbm_x`
-  (lgbm + extras), `comp` (components, base features), `comp_x` (components + extras).
-- Leak-free walk-forward, `--step 0 --captured`, captured fraction 2022-23 / 2023-24 / 2024-25:
-  rolling_mean_5 0.388 / 0.330 / 0.372; **lgbm 0.415 / 0.370 / 0.416**; lgbm_x 0.402 / 0.371 / 0.416;
-  comp 0.400 / 0.354 / 0.430; comp_x 0.404 / 0.359 / 0.444. Means: lgbm 0.400, comp_x 0.402. Noise is
-  about +-0.03 per season, so none beats `lgbm`. MAE: 1.117 / 0.991 / 1.053 (lgbm) vs 1.093 / 0.979 /
-  1.050 (comp_x); Spearman +0.01 with the extras (lgbm_x 0.706 / 0.691 / 0.704 vs 0.693 / 0.679 / 0.692).
-  The extras help ranking slightly, the decomposition adds nothing measurable. Run took 6m47s.
-- Interpretation: the leak-free model is limited by the information, not the model form. Minutes already
-  enter through `mins_per_fix_*`, `start_rate_5`, `zero_min_rate_5`; what is missing is news (injury,
-  suspension, rotation, lineup), which vaastav history does not hold. The big `lgbm_xp` gap (0.76-0.82)
-  is `xp` carrying exactly that (and probably some leak).
-- Caveats: backtest-only (live shadow rows have no goals / assists / xG, so extras would be NaN for the
-  gap GWs). Implementation notes if rebuilt: `y_other` = `target` minus appearance (1 / 2), goals x
-  (6 GK/DEF, 5 MID, 4 FWD), 3 x assists, clean sheets x (4 GK/DEF, 1 MID); LightGBM `poisson` needs a
-  non-zero label sum; vaastav has position 5 (managers) in 2025-26.
-
-## Model-family review (2026-10-28, user's list, assessed; nothing built except components above)
-- XGBoost / CatBoost: skip (same family; the tuning sweep moved captured fraction <= 0.011; the only
-  categorical feature is position).
-- Random Forest / ExtraTrees, Ridge / Elastic Net / Poisson: only as cheap baselines or ensemble members;
-  expect between `rolling_mean_5` and `lgbm`.
-- Component models: tried above (and reverted), no gain on the same features.
-- Bayesian hierarchical: only useful once the planner uses variance (captain risk); not now.
-- LSTM / GRU / TFT: skip (data too small and noisy).
-
-## 2026-10-28: GW9 forecast for the current squad (no code changes)
-- `fpl entry` (picks only to GW8, so the Pedro -> Evanilson move is not stored), then
-  `fpl transfers --gw 9 --horizon 1 --max-transfers 1` (lgbm_xp, bank 0.1, 1 free): unchanged GW8 squad
-  43.9 predicted GW9 points; with Pedro -> Evanilson (the move made) 49.0; captain Evanilson. Bench boost
-  is the only chip left. Forward-looking, not a backtest: score it after GW9 with `fpl blind-score`.
-- Lineup (lgbm_xp, after Pedro -> Evanilson, 3-4-3): Raya; Konsa, Van Hecke, Muharemovic; Tavernier,
-  Palmer, Rogers, Gomez; Evanilson (C, 6.35), Haaland (6.09), Calvert-Lewin. Bench Gibbs-White,
-  Calafiori, Davis, Bentley.
-- Extra -4 transfer (bank 1.7, 0 free left): Gibbs-White -> Neto is 48.9 net vs 49.0 hold for GW9 alone
-  (not worth it), 207.6 vs 195.8 over GW9-12 (flat persistence, no fixtures). Two transfers (+ Calvert-Lewin
-  -> N.Jackson, -8): 216.8 over GW9-12.
-- Best fresh 15 (100m, same for horizon 1 and GW9-12): Suzuki, Verbruggen; Hill, De Cuyper, Gabriel,
-  Vuskovic, Konsa; Neto (C), Henderson, Mbeumo, Dewsbury-Hall, Iwobi; Evanilson, N.Jackson, Haaland. Cost
-  98.4m. Ignores selling prices / transfer cost.
-- New page [running-predictions.md](running-predictions.md): the recipe for any upcoming GW (these were
-  throwaway scripts; the snippets in the page are checked).
-- Caveats: `lgbm_xp` feeds `ep` as `xp` (xp-leak caveat applies to absolute numbers); one-GW point
-  forecasts carry large per-GW noise (backtest MAE per player-GW is about 1.2+ pts).
-
-## 2026-10-28: Real free-transfer / chip history (branch feat/real-replay)
-- New `fpl.replay` + `fpl replay`: reconstructs free transfers per GW from `entry_gameweeks`
-  (transfers, hit cost, active chip). Rule found by fitting the recorded costs: unused free transfers
-  bank (cap 5), +1 per GW, a wildcard / free-hit week uses none and adds none. It reproduces the
-  recorded hit in all 8 GW of 2026-27 (hits GW4 8, GW8 4). Free transfers going into GW9: 1.
-- Chips used 2026-27: free hit GW3, triple captain GW4, wildcard GW5; bench boost left (first half).
-- `fpl transfers --free` now defaults to the derived value; output lists chips left. Chip plays are
-  not planned yet. The replay of the squad itself already worked (`entry_picks` feeds `fpl transfers`).
-- Caveats: the cap-5 and no-add-after-chip rules rest on 8 GW of one entry (the chip rule is checked by
-  GW4 / GW6 / GW8 hits only); the half-season chip windows (GW1-19 / 20-38) are from the 2025-26 rules.
-  7 new tests in `tests/test_replay.py`; 94 pass.
-
-## 2026-10-28: GW9 transfer question, Joao Pedro out (no code changes)
-- Ran `fpl snapshot` (snapshot 6) and `fpl entry`. Joao Pedro: thigh injury, no return date, 0% chance,
-  902k transfers out, price -0.1. Candidates: N.Jackson 6.8m (+0.2m this GW, 823k in), Evanilson 6.2m
-  (+0.1m, 282k in), Neto 6.6m. GW9 deadline 31 Oct 11:00.
-- `fpl transfers --gw 9 --horizon 4` (lgbm_xp, bank 0.1, 1 free): best single transfer Pedro -> Evanilson
-  (net 195.8 vs 175.7 hold); predicted GW9-12 points Evanilson 25.6, Neto 25.6, Jackson 24.4 (flat
-  persistence, so blind to fixtures). 3-transfer plan with 8-pt hit includes Jackson.
-- Fixtures GW9-14: mean FDR equal (about 2.67); GW15 Evanilson Arsenal (A, FDR 5) vs Jackson Coventry
-  (A, 2). Opponents' goals conceded/game GW9-14: Jackson 1.69, Evanilson 1.19 (about 8 matches each).
-- Career splits by opponent tier (top7 / mid / bottom6 of that season's table, appearances only):
-  Evanilson 3.40 / 3.44 / 4.29 pts per game (n 25/27/21); Jackson 4.12 / 3.92 / 4.05 (n 26/24/20).
-  Jackson's goals per game vs top 7 0.42 vs 0.20; samples small, differences within noise.
-- Outcome (user, 2026-10-28): made Pedro -> Evanilson for GW9 (the planner's best single transfer; Jackson
-  and Neto-for-Rogers left for later). Evanilson vs Jackson long term: Evanilson 678 min, 5.7 pts/90, xG/90
-  0.41, 6.2m; Jackson 547 min, 5.6 pts/90, xG/90 0.30, 6.8m; a lean, not a verdict.
-- Original advice: Pedro out now; Evanilson now / Jackson around GW11-12 is reasonable. Not executed
-  by this repo; the user decides.
-
-## 2026-10-27: Is vaastav `xp` recorded before the deadline? (branch feat/xp-timing)
-**Evidence says no, at least partly; magnitude unknown.**
-- *Haul test* (single-fixture players, 2020-21..2026-27, n=1512 with pts >= 10): `xp_g - xp_{g-1}` =
-  +2.80 and `xp_{g+1} - xp_g` = -0.36, i.e. the jump from a haul is already in `xp_g`. The
-  trusted live `ep` behaves the opposite way: GW8 haulers (n=15) went from the frozen pre-deadline
-  `ep` (GW8) to `ep_next` (GW9, snapshot 3) by +1.83. Blankers (<=1 pt): -0.20 / +0.02 in vaastav, +0.03 live.
-- *Absence test:* regular starters (mins_per_fix_5 >= 60) who played 0 minutes had `xp` <= 0.5 in
-  45-57% of cases (2020-26) vs 3-6% for those who played; live frozen `ep` GW8: 36% (n=22) vs 3%.
-  Not conclusive: many absences are known injuries.
-- *Leak-free proxy:* `xp_prev` (new dataset column: per-fixture `xp` of the player's latest earlier GW with
-  an `xp`; `fpl backtest --lag-xp`). Captured fraction (`--model --captured --step 0`, 2022-23 /
-  2023-24 / 2024-25): fpl_xp 0.679 / 0.629 / 0.667 -> fpl_xp_prev 0.374 / 0.331 / 0.370 (= rolling_mean_5
-  0.390 / 0.334 / 0.376); lgbm_xp 0.770 / 0.805 / 0.833 -> lgbm_xp_prev 0.419 / 0.381 / 0.415 (= lgbm
-  0.418 / 0.374 / 0.420). Last GW's `xp` adds nothing, as a stale forecast would not.
-- *Counter-evidence that the leak may be small:* live frozen `fpl_ep` captured 0.607 (GW8 fresh) /
-  0.566 vs backtest `fpl_xp` 0.63-0.68; live `lgbm_xp(ep)` 0.828 (GW8) vs backtest 0.77-0.83. Two
-  gameweeks, noise +-0.03/GW, so this neither clears nor convicts `xp`.
-- **Consequence:** absolute backtest numbers for `fpl_xp` / `lgbm_xp` / planner (74-85 pts/GW) cannot be
-  trusted as deadline-available performance; `lgbm` (no `xp`) and `rolling_mean_5` are leak-free.
-  Comparisons between policies fed the same `xp` are still fair relative to each other. Decide on
-  `ep`-as-`xp` only with live `ep` history (more GWs).
-- Code: `backtest.load_dataset` adds `xp_prev` (not a required column); `LightGBMPredictor(xp_column=)`;
-  `fpl backtest --lag-xp`. New test `test_xp_prev_is_the_latest_earlier_xp_per_fixture...`; 87 pass.
-
-## 2026-10-27: Horizon-aware predictions (branch feat/next-task)
-- **New `fpl.horizon`**: `HorizonPredictor(h, use_xp)` predicts the points of a fixture h GWs after
-  the decision from the player's *source row* (latest row in a GW <= decision GW, same season) plus
-  the target's `was_home` and the GW gap. Opponent form is dropped (no opponent id to look it up
-  as of the decision), own-team form comes from the source row. `PersistencePredictor` is the
-  reference (base model on the source row = the planner's persistence). Leak-free by construction.
-- `fpl backtest --model --horizons H --step 0` adds both per h; `GwInput.ahead` +
-  `season_inputs(ahead_models=...)` + `fpl backtest-planner --horizon-models` feed them to the
-  planner backtest (`horizon_points` prefers `ahead`). 7 new tests, 86 pass.
-- **Prediction quality, 2024-25, per-GW MAE / Spearman** (step 0): h1 lgbm_xp persistence
-  1.081 / 0.680 vs lgbm_xp_h1 1.060 / 0.691; h2 1.124 / 0.651 vs 1.095 / 0.663; h3 1.175 / 0.618
-  vs 1.121 / 0.641. Without xp, horizon models ~ persistence (h3 lgbm 1.138 vs 1.135).
-  So the horizon model helps a little at the metric level.
-- **Planner backtest, lgbm_xp only, total points (planner / planner_hits), persistence vs
-  horizon models:** horizon 3: 2023-24 3028 / 3010 vs 3009 / 3033; 2024-25 3228 / 3195 vs
-  2874 / 2961. Horizon 4, 2024-25: 3170 / 3180 vs 2932 / 3028. Horizon 1, 2024-25: 3050 / 3109.
-  **The horizon models did not help the planner and were worse on 2024-25**, despite better
-  MAE. Likely cause: their later-GW forecasts are flatter than the current-GW `xp`-fed ones, so
-  the plan weighs the first GW more and transfers less (88-96 vs 105-108). Persistence stays the
-  default; `--horizon-models` is opt-in. Horizon 6 (planner / planner_hits, persistence vs models): 2023-24 3025 / 3025 vs 2975 / 2875; 2024-25 3107 / 3117 vs 2958 / 3005. Horizon 1, 2023-24: 2990 / 3025. Persistence wins or ties in every comparison.
-- Caveat: numbers with only `lgbm_xp` use a larger eligible pool than the earlier two-predictor
-  tables, so they are not comparable with them.
-- Horizon-model live wiring (`planner.horizon_predictions`) NOT done: no planner gain.
-
-## 2026-10-27: FPL influence / creativity / threat as features (PR #16)
-- `features.py`: `influence_5/10`, `creativity_5/10`, `threat_5/10` = lagged per-fixture means
-  (`ICT_WINDOWS`), leak-free like the other rolls. Data: populated in `hist_player_gw` for every
-  season since 2016-17 (xG only since 2022-23). `live._shadow` now copies the three from
-  `element_history.raw` for played-but-missing fixtures; `live_features(2026-27, 9)` has them for
-  669/669 players. New test `test_ict_features_are_lagged_means_per_fixture`.
-- **Result: no measurable gain.** `fpl backtest --model --captured --step 0` before -> after
-  (captured fraction; MAE unchanged to 3 d.p.): 2024-25 lgbm 0.409 -> 0.416, lgbm_xp 0.814 -> 0.815;
-  2023-24 lgbm 0.360 -> 0.370, lgbm_xp 0.784 -> 0.789; 2025-26 (11 GWs) lgbm 0.371 -> 0.357,
-  lgbm_xp 0.837 -> 0.810. Differences are within season-to-season noise. Kept (cheap, leak-free);
-  `xp` already carries most of this signal. Frozen GW9 picks were made before this change.
-
-## 2026-10-26: Planner backtest realism: selling price, auto-subs (PR #16)
-- `planner.plan_transfers`: **budget bug fixed** when `sell_prices` is given: a kept player now costs
-  his selling price (before, kept players cost market price against a selling-price credit).
-- `planbacktest`: `selling_price(buy, now)` (half of a rise, rounded down), purchase prices tracked
-  per squad member; `autosub_points` (bench GK only for GK, outfield bench by predicted points, formation
-  stays legal, vice-captain = highest-predicted player who played) used when `GwInput.minutes` is set
-  (`season_inputs` fills it from `hist_player_gw.minutes`). 4 new tests, 79 pass.
-- Results, total points, `fpl backtest-planner` (both predictors; was -> now):
-  2023-24 fpl_xp planner 2786 -> 2757, lgbm_xp planner 2992 -> 2913, planner_hits 3068 -> 3066;
-  2024-25 fpl_xp planner 2579 -> 2587, lgbm_xp planner 2896 -> 2855. Per GW still 74-83 for the
-  planner, so selling price and auto-subs are small effects; the optimism is elsewhere (see caveats).
-- Caveats / still open: `xp` timing not verified (main suspect for 74-83/GW vs ~60-70 for top real
-  managers); no real free-transfer/chip history; real-squad replay from `entry_picks` not done.
-- Not done from the post-GW9 plan: run `fpl snapshot`, `fpl blind-score --gw 9` and `--all` after
-  GW9 finishes.
-
-## 2026-10-26: GW9 pre-deadline run (no code changes)
-- Ran `fpl snapshot` (snapshot 5: 669 players, 380 fixtures), `fpl entry` (8 GWs of picks),
-  `fpl blind-pick --gw 9 --model` (frozen to `data/processed/blind_gw9.json`), `fpl transfers --gw 9`.
-- Predicted XI points (in-sample, pre-deadline): rolling_mean_5 85.8, fpl_ep 95.0, lgbm_xp(ep) 67.2
-  (captains Haaland / Konsa / Neto). Score after GW9 with `fpl blind-score --gw 9`.
-- `transfers` (lgbm_xp, GW9-12, bank 0.1, 1 free): hold 174.2; 1 transfer (Rogers -> Neto) 191.9;
-  2 (+4 hit) 204.6; 3 (-8 hit) 213.8 = Rogers, Joao Pedro, Gibbs-White -> Evanilson, Henderson, Neto
-  (`best_plan` pick). Captain Neto. Not executed; the user decides.
-- First `ep_next` snapshot taken for GW9 on a fresh GW (snapshot 5), continuing the `ep` log.
-
-## 2026-10-26: Planner backtest, `ep` as `xp`, zero-`xp` rounds (branch feat/planner-backtest)
-- **New** `fpl.planbacktest` + `fpl backtest-planner [--season S] [--predictor fpl_xp|lgbm_xp]
-  [--horizon H]`: one squad per policy through a season, start squad = `optimize_squad` on GW1
-  predictions at 100m, first GW no transfers, then 1 free transfer per GW (bank up to 5), 4 per
-  extra, sale price = current price, XI + captain chosen from predictions, scored on actuals
-  (`score_selection`, no auto-subs) minus hits. Policies: `hold`, `planner` (`best_plan` margin
-  1.0, max 3 transfers), `planner_hits` (margin 0). One fit per season (as in `backtest`).
-- **Data bug found and fixed.** vaastav stores a missing `xp` as 0 for a whole round (27 of 38
-  rounds in 2025-26; 2023-24 GW26; 2024-25 GW22/32/34; 2026-27 GW2/6). `load_dataset` now maps a
-  round whose `xp` is 0 for everyone to NULL. This changes earlier numbers: 2024-25 reference
-  table in `glossary.md` (fpl_xp 0.618 -> 0.664, lgbm_xp 0.793 -> 0.814). Planner seasons skip
-  rounds with no forecast (37 GWs in 2023-24, 35 in 2024-25), identically for all policies.
-- **Results, total actual points over the season (hit points / transfers in brackets), horizon 1:**
-
-  | season | predictor | hold | planner | planner_hits |
-  |---|---|---|---|---|
-  | 2023-24 (37 GWs, ceiling 5852) | fpl_xp | 1624 | 2786 (144/73) | 2824 (160/77) |
-  | | lgbm_xp | 1582 | 2992 (176/81) | 3068 (236/96) |
-  | 2024-25 (35 GWs, ceiling 5236) | fpl_xp | 1673 | 2579 (92/58) | 2550 (140/70) |
-  | | lgbm_xp | 958 | 2896 (156/74) | 2964 (220/90) |
-
-  Horizon 4 (persistence beyond GW g): 2023-24 fpl_xp 1623 / 2765 (252/100) / 2755; lgbm_xp 1582 /
-  2952 (276/106) / 2952. 2024-25 fpl_xp 1673 / 2582 (240/95) / 2582; lgbm_xp 958 / 2913 (260/100)
-  / 2920 (264/101). Points per GW are totals / 35-37 (planner 70-85, hold 27-48).
-- **Reading.** The planner beats hold by 900-2000 points (net of hits) in every cell. `lgbm_xp` beats
-  `fpl_xp` as the planner's input by 206 (2023-24) and 317 (2024-25) points. `planner_hits`
-  (margin 0) vs `planner`: +38/-29 (fpl_xp), +76/+68 (lgbm_xp) at horizon 1, i.e. no reliable gain
-  from taking hits. Horizon 4 with persistence does not beat horizon 1 (-40..+17 for lgbm_xp,
-  +/-20 for fpl_xp) and makes 25-30 more transfers, so keep horizon 1 as the reference.
-- **Caveats (read before trusting absolute numbers).** 70-85 points/GW is above what real top
-  managers score, so the absolute level is optimistic: sale price = current price (no 50% profit
-  rule), unlimited fresh information at each deadline (vaastav `xp` is assumed pre-deadline,
-  unverified), fixture counts known, club = end-of-season club, no chips. `hold` is a weak
-  baseline (a GW1 squad never changed; lgbm_xp's 2024-25 start squad is poor, 958, because GW1
-  `xp` is unreliable: corr with points 0.40 vs 0.75 later). Compare policies and predictors with
-  each other, not with real FPL scores. No real-squad replay was done.
-- **`ep` as `xp` (Part 2).** No `ep` history exists (3 snapshots, all GW9's `ep_next`; vaastav
-  2026-27 stops at GW6), so `xp`-vs-`ep` could only be checked on GW8 using the frozen
-  `ep_this` (snapshot 1) against actuals: 662 players, mean ep 1.07 vs actual 1.40 (xp in 2026-27
-  GW3-5 averages 1.36-1.43), MAE 1.070, Pearson 0.56. Decision test: `lgbm_xp` fed `ep` as `xp`
-  for GW8 captured 120/145 = 0.828, vs `fpl_ep` 82 (0.566), `lgbm` 35 (0.241), rolling_mean_5 47
-  (0.324); MAE 0.939 vs 1.070, Spearman 0.742 vs 0.731. (`fpl_ep` is 82 here, 88 in the GW8 entry
-  below: same pool restriction as the other rows, re-optimised.) One gameweek only, but a large
-  gap, so `ep` is used as `xp` for the first GW. See `decisions.md`.
-- **Wired in:** `fpl transfers --predictor lgbm_xp` (now the default), `horizon_predictions(...,
-  "lgbm_xp")` (first GW `ep` as `xp`, later GWs persistence), `fpl blind-pick --model` (adds
-  `lgbm_xp(ep)`), `live.ep_model_predictions`. First live run: GW9-11, 3 transfers, predicted +27.7
-  over holding (predictions only).
-- Added `fpl blind-score --all` (multi-GW live track record; means per predictor/who). Use it
-  after each GW once `blind-pick --model` files exist (GW9 onwards are the clean pre-kickoff ones).
-- Tests: 75 pass (new: `tests/test_planbacktest.py` for bank/free-transfer/hit bookkeeping,
-  scoring on actuals only, persistence, season inputs; zero-`xp` round; `ep_model_predictions`).
-  ruff clean. Each horizon-1 run takes ~45 s per season and predictor for fpl_xp (~10 min total
-  with lgbm_xp, both seasons).
-
-## 2026-10-26: Transfer planner, GW8 blind score, glossary (branch feat/transfer-planner)
-- Added `fpl.planner` (`plan_transfers`, `best_plan`, `horizon_predictions`) and `fpl transfers
-  --gw N` (flags: `--horizon 4 --free 1 --max-transfers 3 --discount 1.0 --predictor lgbm`).
-  One MILP per transfer count k: fixed post-transfer squad over the horizon, XI and captain per
-  GW, hit = 4 x (k - free) subtracted afterwards. `best_plan` takes the fewest transfers within
-  1.0 point of the top net. `LightGBMPredictor.predict_rows` predicts from live feature dicts;
-  `lgbm` for the planner is trained on all of `hist_player_gw` (about 12 s).
-- First live run (GW9, horizon 4, lgbm, 0.1m bank, 1 free): unchanged squad 194.2 predicted pts;
-  1 transfer (Gibbs-White -> Mbeumo) 199.9; 3 transfers 200.6 net of an 8-pt hit, so the planner
-  recommends the single transfer. Predictions only; no result to compare yet.
-- Caveats: not backtested (planned: replay past GWs against `entry_picks`); squad is fixed over the
-  horizon (no later transfers, chips, auto-subs); sale price = current price (real selling price is
-  lower after rises); later-GW features only see results to GW-1; `lgbm` here has no `xp`, the
-  weaker variant (captured fraction 0.404 vs 0.793 with xp); free transfers are a flag, not derived.
-- GW8 blind score (`fpl blind-score --gw 8`, picks frozen after GW8 kickoffs began, so not a clean
-  pre-deadline test). Fresh squad achieved/ceiling 145.0: rolling_mean_5 47.0 (0.324), fpl_ep 88.0
-  (0.607). The user's own squad, lineup choice only (ceiling = best XI from the same 15, 78.0):
-  rolling_mean_5 69.0 (0.885), fpl_ep 72.0 (0.923). The `entry` fractions are NOT comparable to
-  the `fresh` ones (different ceilings).
-- Added `glossary.md`. Tests: 66 pass, ruff clean.
-
-## 2026-10-25: LightGBM predictor (branch feat/lightgbm)
-- Added `fpl.model.LightGBMPredictor` (per-fixture L2 regression on `FEATURE_COLUMNS`, optional
-  `xp`; 300 rounds, lr 0.05, 31 leaves, refit per backtest block) and `fpl backtest --model`
-  (adds `lgbm` and `lgbm_xp`). Extra `model` in pyproject (also in `dev`).
-- Backtest, one fit per season, vs baselines (MAE / Spearman / top-10 hit):
-  2023-24: fpl_xp 0.876/0.747/0.363, lgbm 0.991/0.678/0.145, lgbm_xp 0.730/0.747/0.516.
-  2024-25: fpl_xp 0.943/0.756/0.350, lgbm 1.058/0.692/0.195, lgbm_xp 0.759/0.765/0.545.
-  Captured fraction (ceiling 151.3): rolling_mean_5 0.371, fpl_xp 0.618 (93.2 pts), lgbm 0.404
-  (61.7), lgbm_xp 0.793 (119.9).
-- Reading: without `xp` the model only slightly beats rolling_mean_5; nearly all the gain comes from
-  `xp` (FPL's news-aware availability/fixture info) plus recalibration. Caveats: hyperparameters
-  untuned, single-fixture target (no horizon yet), xp missing before 2020-21 so those training
-  rows use NaN, live use needs `ep` as the stand-in for `xp` (not the same field).
-- Tests: `tests/test_model.py` (60 pass, ruff clean).
-
-## 2026-10-25: Blind-pick scorer built, GW8 not yet scorable (branch not yet created)
-- Added `fpl.live.score_blind` and `fpl blind-score --gw N`: scores each frozen XI/captain
-  (`score_selection`, no auto-subs) on `element_history` points for that round, against the
-  hindsight ceiling (`optimize_squad` on actuals over the same pool and snapshot prices; for the
-  user's squad, best lineup via `pick_lineup`). Raises unless every fixture of the GW is `finished`
-  in the latest snapshot.
-- Refreshed data: snapshot 2 and `fpl history` (5,220 rows; GW8 rows partial). Snapshot 2 shows all
-  10 GW8 fixtures unfinished (last kickoff 2026-10-25 16:30), so the scorer correctly refuses.
-  No GW8 actuals were looked at; no GW8 result yet.
-- Tests: 2 new in `tests/test_live.py` (58 pass, ruff clean).
-
-## 2026-10-25: Live-data adapter and frozen blind GW8 picks (PR #8)
-- Data: vaastav already has 2026-27 but only to GW6 (3,883 rows). Imported it, then ran
-  `fpl snapshot` (snapshot 1, 669 players, 380 fixtures, taken 2026-10-25 02:43 with GW8 current)
-  and `fpl history` (5,220 `element_history` rows, GW1-7) and `fpl entry` (8 GWs of picks).
-- Added `fpl.live`: `live_features(con, season, gw)` shadows `hist_*` with TEMP tables (adds
-  GW7 from `element_history`, plus target-less rows for GW8 fixtures) and runs the unchanged
-  `feature_sql`; `predictions` (rolling_mean_5, FPL `ep`), `player_pool`. New CLI
-  `fpl blind-pick --gw N` writes `data/processed/blind_gw<N>.json` (gitignored).
-- GW8 result: 669 player-fixture rows, 662 with >= 5 prior fixtures. Frozen predicted XI points
-  (fresh squad): rolling_mean_5 87.6, fpl_ep 92.0; user's own squad: 70.4 / 65.3.
-- Tests: `tests/test_live.py` (56 tests pass, ruff clean).
-- Caveats: the snapshot was taken after GW8 kickoffs began, so it is not a pre-deadline freeze;
-  only price, club, position and `ep_this` were read from it (not its running totals). No GW8
-  actuals were looked at. `ep_this` equalled `ep_next` for every player spot-checked.
-- Frozen fpl_ep XI: Raya, Gabriel, Konsa, N.Jackson, Evanilson, De Cuyper, Vuskovic, Henderson,
-  Neto, Doku, Haaland (C Konsa). rolling_mean_5 captain is a defender (Vuskovic), worth a look.
-- Still to do: after GW8 finishes, `fpl history`, then score the frozen picks against the
-  hindsight ceiling (not built yet).
-
-## 2026-10-24: Squad/lineup optimizer and captured-fraction metric (PR #5, merged)
-- Added `fpl.optimizer` (scipy milp), `CapturedFractionHook`, `fpl backtest --captured` and the
-  `optimize` extra.
-- 2024-25, step 0, captured fraction (average ceiling 151.3 pts/GW): constant_2 0.102,
-  rolling_mean_5 0.371, career_mean 0.354, fpl_xp 0.618 (93.2 pts/GW achieved).
-- Caveats: fresh squad each GW, no auto-subs, end-of-season club.
-
-## 2026-10-24: Walk-forward backtest harness (PR #4)
-- Added `fpl.backtest` and `fpl backtest`. Baselines on 2023-24 / 2024-25 (fixture MAE, Spearman):
-  constant_2 1.95/1.94, 0.09/0.10; rolling_mean_5 1.04/1.10, 0.67/0.69; career_mean 1.27/1.29,
-  0.48/0.51; fpl_xp 0.86/0.93, 0.75/0.76. `fpl_xp` is the number to beat.
-- Caveat: `xp` is summed across DGW rows; vaastav's DGW semantics are unverified.
-
-## Earlier
-- PR #3 leakage-free feature builder; PR #2 vaastav history import (2016-17..2025-26);
-  PR #1 license, CI and docs.
+## Open questions
+- Does `ep`-as-`xp` (`lgbm_xp(ep)`) beat `fpl_ep` and `lgbm` over several GWs? GW8 0.828 vs 0.566 (fresh,
+  different computation); GW9 fresh 0.454 vs 0.554. Needs more GWs.
+- After `fpl entry` on 2026-10-30, `entry_transfers` had no GW9 row although the Pedro -> Evanilson
+  transfer was made; unverified whether the public endpoint only lists transfers after the deadline.

@@ -1,4 +1,4 @@
-# Status (last updated: 2026-10-29, open-questions pass, `xp` DGW fix, odds ingest, on branch feat/xp-fix-odds)
+# Status (last updated: 2026-11-03, GW9 scored; earlier: 2026-10-29 open-questions pass, `xp` DGW fix, odds ingest)
 
 ## Done
 | PR | What |
@@ -11,6 +11,7 @@
 | #8 | Live adapter `fpl.live` + `fpl blind-pick`; GW8 2026-27 picks frozen |
 | #10 | `fpl blind-score` scorer |
 | #10 | `fpl blind-score` scorer; GW8 scored (fresh fpl_ep 0.607, rolling_mean_5 0.324) |
+| (this PR) | GW9 scored (fresh rolling_mean_5 0.446, fpl_ep 0.554, lgbm_xp(ep) 0.454; entry 0.784 / 0.784 / 0.886); task-log.md reduced to next task + improvements |
 | #11 | `fpl.model` LightGBM; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
 | #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
 | #14 | `fpl.planbacktest` + `fpl backtest-planner`; zero-`xp` rounds fixed; `ep` as `xp` for `lgbm_xp` live |
@@ -28,19 +29,18 @@ How to produce a GW's predictions / lineup / transfers: [running-predictions.md]
 (A `fpl lineup` / `fpl squad` CLI command would replace the Python snippets there; not built.)
 
 ## Next: collect `ep`, then news / fixture-aware chip timing (start here)
-Odds features were tried 2026-10-29: captured 0.400 -> 0.415, inside noise, not adopted (task log).
-The older `ep` / chip-timing brief is the "Backlog" entry in [task-log.md](task-log.md). Summary:
+Odds features were tried 2026-10-29: captured 0.400 -> 0.415, inside noise, not adopted (decisions.md).
+Next task and improvement ideas: [task-log.md](task-log.md). Summary:
 1. Chips are modelled (planner + `fpl transfers --chips` + backtest policies). Free hit / wildcard are in
    the season backtest (`--swap-chips`, 2026-10-30): no clear gain over `planner` (+20 / -7 / +3 mean
    points per season for `--chip-min` 0 / 3 / 6). Open: fixture-aware later-GW predictions so chip timing
    can beat "play early"; gain net of normal transfers; selling-price-aware chip squads.
    **`xp` timing was investigated 2026-10-27: vaastav `xp` very likely partly leaks the GW result**
-   (task-log). Treat `fpl_xp` / `lgbm_xp` / planner absolute numbers as optimistic.
+   (decisions.md). Treat `fpl_xp` / `lgbm_xp` / planner absolute numbers as optimistic.
 Standing chores (do whenever a GW passes):
-- **After GW9 finishes:** `fpl snapshot`, `fpl blind-score --gw 9`, `fpl blind-score --all`, record the
-  numbers. GW9 was re-frozen 2026-10-30 (snapshot 9, `--model`, before the 31 Oct deadline) with the
-  user's squad (GW8 picks, Pedro -> Evanilson by hand) added as `entry` for every predictor; the
-  earlier 2026-10-26 freeze was deleted. Plain `lgbm` is not in the file.
+- GW9 scored 2026-11-03: fresh `lgbm_xp(ep)` 0.454 vs `fpl_ep` 0.554 vs rolling_mean_5 0.446;
+  entry 0.886 / 0.784 / 0.784. Next: the same for GW10 (freeze with `--model` before kickoff, then
+  `fpl snapshot`, `fpl blind-score --gw N`, `--all`). Plain `lgbm` is not in the GW9 file.
 - Log `ep` every GW: `fpl snapshot` before each deadline, `fpl blind-pick --gw N --model` (before
   kickoffs), `fpl transfers`, then `fpl blind-score --gw N`. No `ep` history exists yet, so the
   `ep`-as-`xp` decision rests on one gameweek (GW8).
@@ -63,7 +63,7 @@ history and the squad replay are done (2026-10-28).
   the FPL `fixtures` difficulty field (`fixture_snapshots`) is untried.
 
 ## Open questions
-Answered 2026-10-29 (task log): DGW `xp` is the round total repeated per fixture row (harness fixed);
+Answered 2026-10-29 (decisions.md / data.md): DGW `xp` is the round total repeated per fixture row (harness fixed);
 `ep_this` is `ep_next` with this-round availability, not a separate forecast; vaastav lags ~2.5 weeks in
 batches (GW6 on 2026-10-29).
 - How much of `xp`'s backtest value is leak? After the DGW fix `lgbm_xp` captures 0.87-0.88 vs 0.38-0.42
