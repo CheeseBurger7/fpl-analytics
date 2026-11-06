@@ -42,7 +42,14 @@ Standing chores (do whenever a GW passes):
 - GW9 scored 2026-11-03: fresh `lgbm_xp(ep)` 0.454 vs `fpl_ep` 0.554 vs rolling_mean_5 0.446;
   entry 0.886 / 0.784 / 0.784. Next: the same for GW10 (freeze with `--model` before kickoff, then
   `fpl snapshot`, `fpl blind-score --gw N`, `--all`). Plain `lgbm` is not in the GW9 file.
-  GW10 frozen 2026-11-05 (snapshot 12, `blind_gw10.json`); score it after GW10.
+- GW10 lineup run 2026-11-06 (snapshot 13, GW9 picks, bank 1.7m, no transfer): lgbm 3-5-2, captain Haaland
+  (5.62 xp); lgbm_xp(ep) picks Evanilson (5.54) with Haaland 4.44. Frozen 2026-11-06 (`blind-pick --gw 10 --model`, snapshot 13); the user's real team is stored under a
+  hand-added `manual` key in `blind_gw10.json` (3-4-3: Raya; Konsa, Calafiori, Van Hecke; Palmer, Rogers,
+  Tavernier, Mbeumo; Haaland (C), Calvert-Lewin, Evanilson; bench Muharemović, Davis, Gomez, Bentley).
+  `blind-score` does not read `manual` yet. `blind-pick` overwrites an existing file: check first.
+  Rerun after the user's real transfer (Gibbs-White -> Mbeumo): lgbm 3-5-2 with Mbeumo 5.22 (captain
+  Haaland 5.62); lgbm_xp Mbeumo 6.84 (captain Mbeumo). Playing Calvert-Lewin (3-4-3) costs 0.3-0.75 pts.
+  Tip: `python -X utf8` is needed to print names like Muharemović on Windows (cp1252 otherwise).
 - Log `ep` every GW: `fpl snapshot` before each deadline, `fpl blind-pick --gw N --model` (before
   kickoffs), `fpl transfers`, then `fpl blind-score --gw N`. No `ep` history exists yet, so the
   `ep`-as-`xp` decision rests on one gameweek (GW8).
