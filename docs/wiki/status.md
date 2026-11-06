@@ -1,4 +1,4 @@
-# Status (last updated: 2026-11-03, GW9 scored; earlier: 2026-10-29 open-questions pass, `xp` DGW fix, odds ingest)
+# Status (last updated: 2026-11-05, GW10 frozen, Mbeumo transfer chosen; earlier: 2026-11-03 GW9 scored; earlier: 2026-10-29 open-questions pass, `xp` DGW fix, odds ingest)
 
 ## Done
 | PR | What |
@@ -11,7 +11,8 @@
 | #8 | Live adapter `fpl.live` + `fpl blind-pick`; GW8 2026-27 picks frozen |
 | #10 | `fpl blind-score` scorer |
 | #10 | `fpl blind-score` scorer; GW8 scored (fresh fpl_ep 0.607, rolling_mean_5 0.324) |
-| (this PR) | GW9 scored (fresh rolling_mean_5 0.446, fpl_ep 0.554, lgbm_xp(ep) 0.454; entry 0.784 / 0.784 / 0.886); task-log.md reduced to next task + improvements |
+| (this PR) | GW10 frozen (`blind_gw10.json`, snapshot 12) and transfer decision logged: Gibbs-White -> Mbeumo (`lgbm` +5.0 over GW10-12) |
+| #27 | GW9 scored (fresh rolling_mean_5 0.446, fpl_ep 0.554, lgbm_xp(ep) 0.454; entry 0.784 / 0.784 / 0.886); task-log.md reduced to next task + improvements |
 | #11 | `fpl.model` LightGBM; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
 | #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
 | #14 | `fpl.planbacktest` + `fpl backtest-planner`; zero-`xp` rounds fixed; `ep` as `xp` for `lgbm_xp` live |

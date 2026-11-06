@@ -11,7 +11,8 @@ Start from `main`; read `status.md`, `glossary.md`, `decisions.md`.
    before the first kickoff (add the user's squad as `entry`, see below), `fpl transfers --gw N`; after
    the GW `fpl snapshot`, `fpl blind-score --gw N` and `--all`. Record the numbers in `status.md`. The live
    `ep` history is the only clean test of the `xp` / `ep`-as-`xp` question; GW8-9 exist so far.
-2. **GW10 (deadline after 2026-11-03):** transfer options for GW10-12 are below; the user had not decided.
+2. **GW10:** the user chose Gibbs-White -> Mbeumo (details below). Next: GW11 transfer (Davis -> Vuskovic /
+   De Cuyper is the open candidate), with the squad updated by hand until the GW10 deadline passes.
 
 ## Current-GW notes (GW10-12, run 2026-11-03, squad = GW9 picks, bank 1.7, 1 free, bench boost left)
 - `lgbm` (default): hold 150.7; best 1 transfer Gibbs-White -> Mbeumo 155.7 (+5.0); 2 transfers 155.3;
@@ -25,6 +26,22 @@ Start from `main`; read `status.md`, `glossary.md`, `decisions.md`.
   (rank 40). Not affordable with 1.7 bank in any single defender swap (nearest: Calafiori, 0.4m short), and
   no planner line picks him. Arsenal FDR GW10-12: 2 / 3 / 4. Idea: free bank with a downgrade, then
   Calafiori -> Gabriel without a hit.
+- Rerun 2026-11-05 (snapshot 12): plans unchanged. Fixtures GW10-12 (FDR): Mbeumo H3 A4 H3, form 4.8;
+  Gibbs-White H4 A4 H4, form 1.5, so `lgbm`'s Gibbs-White -> Mbeumo is fixture-supported. N.Jackson 3/2/2
+  (form 8.2, status `a`, chance None) also looks good; Calvert-Lewin 3/4/2, form 3.8. GW10 frozen to
+  `blind_gw10.json` with `--model` (plain `lgbm` still not in the file).
+- **Decision 2026-11-05: the user takes Gibbs-White -> Mbeumo with the GW10 free transfer** (made in the
+  FPL app; it shows in `entry_picks` only after the GW10 deadline, so GW10 `blind-pick` used the GW9 squad).
+  Comparisons behind it (`lgbm` GW10-12 / GW10-15, FDR GW10-15):
+  - Mbeumo MUN MID 7.9m: 15.4 / 30.8, FDR 3 4 3 3 2 2. N.Jackson AVL FWD 7.0m: 12.1 / 24.4, FDR 3 2 2 3 2 2
+    (easier run, but a FWD so he only competes with Calvert-Lewin; `fpl_ep` gives him a flat 8.2 per GW).
+  - Calvert-Lewin LEE FWD 6.1m: 11.5 / 22.5 vs Gibbs-White NFO MID 7.8m: 9.6 / 19.1, FDR 4 4 4 2 4 3,
+    form 1.5: Gibbs-White is the one to sell, Calvert-Lewin stays.
+  - Gross BHA MID 6.2m: 10.5 / 21.3, FDR 3 2 3 4 2 3; frees 1.6m (bank 3.3m) but ~5 pts behind Mbeumo.
+    Route for later: Gross now, then Calafiori -> Gabriel (+2.1m) needs a hit this week or a free transfer
+    next week.
+  - Defenders for Davis (4.0m, form 1.0, `lgbm` 7.0): Vuskovic 5.2m 11.8, De Cuyper 5.4m 11.4 (same BHA
+    fixtures, FDR 3 2 3); each about +4-5 over GW10-12. Candidate for the GW11 free transfer.
 - GW9 blind-score (2026-11-03): see `status.md`. Plain `lgbm` was not in the GW9 freeze, so it is unscored.
 
 ## Improvements to consider (none started)
