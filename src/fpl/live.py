@@ -247,6 +247,56 @@ def score_blind(con: duckdb.DuckDBPyConnection, frozen: dict) -> dict[str, dict]
                              for i in sel.squad if i not in have]  # fmt: skip
             res["entry"] = _result(sel, pick_lineup(padded, sel.squad), actual)
         out[name] = res
+    manual = frozen.get("manual")  # the user's real team, added by hand (xi, bench, captain)
+    if manual:
+        squad = [*manual["xi"], *manual["bench"]]
+        pool = [Player(i, *info[i], actual.get(i, 0.0)) for i in squad]
+        sel = _as_selection({"squad": squad, "xi": manual["xi"], "captain": manual["captain"]})
+        out["manual"] = {"entry": _result(sel, pick_lineup(pool, squad), actual)}
+    return out
+
+
+def _ranks(xs: list[float]) -> list[float]:
+    """Average ranks (ties share the mean rank)."""
+    order = sorted(range(len(xs)), key=xs.__getitem__)
+    ranks = [0.0] * len(xs)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = (i + j) / 2
+        i = j + 1
+    return ranks
+
+
+def blind_accuracy(
+    con: duckdb.DuckDBPyConnection, frozen: dict, *, min_pred: float = 1.0
+) -> dict[str, dict]:
+    """Per-player accuracy per frozen predictor: ``n``, ``mae``, ``spearman`` vs actual points.
+
+    Only players predicted at least ``min_pred`` points count (blank / injured players are
+    predicted ~0 and would flatter every model). Players absent from the gameweek score 0.
+    """
+    actual: dict[int, float] = {}
+    for i, pts in con.execute(
+        "SELECT element_id, total_points FROM element_history WHERE round = ?", [frozen["gw"]]
+    ).fetchall():
+        actual[i] = actual.get(i, 0.0) + (pts or 0)
+    out: dict[str, dict] = {}
+    for name, entry in frozen["predictors"].items():
+        pred = {int(i): v for i, v in entry["predicted"].items() if v >= min_pred}
+        if len(pred) < 3:
+            continue
+        p = list(pred.values())
+        a = [actual.get(i, 0.0) for i in pred]
+        rp, ra = _ranks(p), _ranks(a)
+        mp, ma = sum(rp) / len(rp), sum(ra) / len(ra)
+        cov = sum((x - mp) * (y - ma) for x, y in zip(rp, ra, strict=True))
+        var = (sum((x - mp) ** 2 for x in rp) * sum((y - ma) ** 2 for y in ra)) ** 0.5
+        mae = sum(abs(x - y) for x, y in zip(p, a, strict=True)) / len(p)
+        out[name] = {"n": len(p), "mae": mae, "spearman": cov / var if var else 0.0}
     return out
 
 

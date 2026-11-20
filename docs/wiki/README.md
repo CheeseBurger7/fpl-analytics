@@ -12,6 +12,7 @@ Repo: github.com/CheeseBurger7/fpl-analytics (public, MIT). Local: `C:\Projects\
 | [running-predictions.md](running-predictions.md) | How to run predictions, lineup and transfers for any upcoming GW (commands, steps) |
 | [architecture.md](architecture.md) | Modules, public functions, CLI, how data flows |
 | [data.md](data.md) | DuckDB tables, data gotchas, local data state |
+| [model-scoreboard.md](model-scoreboard.md) | Live per-model scores per GW (fresh / entry / MAE / Spearman) and the transfer ledger; **append every GW** |
 | [glossary.md](glossary.md) | Meaning of xp, ep, lgbm, MAE, Spearman, captured fraction; which metric to target |
 | [decisions.md](decisions.md) | Modelling and evaluation decisions, with reasons |
 | [task-log.md](task-log.md) | Next task, improvement ideas, open questions (forward-looking; no history) |
@@ -19,6 +20,7 @@ Repo: github.com/CheeseBurger7/fpl-analytics (public, MIT). Local: `C:\Projects\
 ## Maintaining the wiki
 At the end of every task, in the same PR as the code:
 1. `status.md`: add the PR to "Done" (one line with the key numbers), refresh "Next" and "Open questions".
+1b. After a GW is scored or a transfer is made: `model-scoreboard.md` (rows for that GW, ledger entry).
 2. `task-log.md`: keep only the next task, improvement ideas and open questions; delete what is done.
 3. `architecture.md` / `data.md` / `decisions.md`: update only if the task changed them (conclusions
    and numbers go in `decisions.md`, not in a log).
