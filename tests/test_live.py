@@ -117,6 +117,32 @@ def test_score_blind_against_hindsight_ceiling():
     assert res["entry"]["ceiling"] >= res["entry"]["achieved"]
 
 
+def test_score_blind_scores_manual_team_against_its_best_lineup():
+    xi = [1, 3, 4, 5, 6, 8, 9, 10, 11, 13, 14]
+    frozen = _frozen(xi)
+    frozen["manual"] = {"xi": xi, "bench": [2, 7, 12, 15], "captain": 14}
+    with _blind_store(True) as s:
+        res = score_blind(s.con, frozen)["manual"]["entry"]
+    assert res["achieved"] == sum(xi) + 14
+    assert res["ceiling"] >= res["achieved"]  # best XI + captain from the same 15
+
+
+def test_blind_accuracy_perfect_and_reversed_ranking():
+    from fpl.live import blind_accuracy
+
+    frozen = _frozen([1, 3, 4, 5, 6, 8, 9, 10, 11, 13, 14])
+    frozen["predictors"] = {
+        "exact": {"predicted": {str(i): float(i) for i in range(1, 16)}},
+        "reversed": {"predicted": {str(i): float(16 - i) for i in range(1, 16)}},
+        "tiny": {"predicted": {str(i): 0.5 for i in range(1, 16)}},  # all below min_pred
+    }
+    with _blind_store(True) as s:
+        acc = blind_accuracy(s.con, frozen)
+    assert acc["exact"]["mae"] == 0 and acc["exact"]["spearman"] == pytest.approx(1)
+    assert acc["reversed"]["spearman"] == pytest.approx(-1)
+    assert acc["exact"]["n"] == 15 and "tiny" not in acc
+
+
 def test_score_blind_refuses_unfinished_gameweek():
     with _blind_store(False) as s, pytest.raises(RuntimeError, match="not finished"):
         score_blind(s.con, _frozen([1, 3, 4, 5, 6, 8, 9, 10, 11, 13, 14]))

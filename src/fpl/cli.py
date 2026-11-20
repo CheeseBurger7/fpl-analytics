@@ -14,7 +14,14 @@ from fpl.api import FPLClient
 from fpl.backtest import default_baselines, format_summary, load_dataset, run_backtest
 from fpl.history import DEFAULT_CACHE, FIRST_SEASON, import_seasons, make_http, seasons_between
 from fpl.ingest import export_snapshot_parquet, sync_element_history, sync_entry, take_snapshot
-from fpl.live import live_features, mean_captured, player_pool, predictions, score_blind
+from fpl.live import (
+    blind_accuracy,
+    live_features,
+    mean_captured,
+    player_pool,
+    predictions,
+    score_blind,
+)
 from fpl.odds import DEFAULT_CACHE as ODDS_CACHE
 from fpl.odds import import_odds_seasons
 from fpl.odds import make_http as make_odds_http
@@ -89,7 +96,8 @@ def build_parser() -> argparse.ArgumentParser:
     bp.add_argument("--entry-id", type=int, default=None, help="also pick for this manager")
     bp.add_argument("--out", type=Path, default=None, help="default blind_gw<N>.json")
     bp.add_argument("--model", action="store_true",
-                    help="also freeze lgbm_xp fed FPL's ep as xp (needs lightgbm; ~15s to train)")
+                    help="also freeze lgbm and lgbm_xp fed FPL's ep as xp "
+                         "(needs lightgbm; ~30s to train)")
 
     bs = sub.add_parser("blind-score", help="score a frozen blind-pick file")
     bs.add_argument("--gw", type=int, help="one gameweek (default blind_gw<N>.json)")
@@ -292,7 +300,10 @@ def blind_pick(
     preds = predictions(live)
     if model:
         from fpl.live import ep_model_predictions
+        from fpl.planner import horizon_predictions
 
+        # plain lgbm (the planner default, incl. the chance-of-playing news scaling)
+        preds["lgbm"] = horizon_predictions(store.con, season, gw, 1, "lgbm")[0]
         lgbm = _model_predictors()[1]  # lgbm_xp
         data = load_dataset(store.con)
         lgbm.fit(data, range(len(data)))
@@ -410,10 +421,12 @@ def main(argv: list[str] | None = None) -> int:
                             key=lambda f: int(f.stem.removeprefix("blind_gw")))
                      if args.all else [args.file or DEFAULT_BLIND_DIR / f"blind_gw{args.gw}.json"])
             scored: dict[int, dict] = {}
+            accuracy: dict[int, dict] = {}
             for path in files:
                 frozen = json.loads(path.read_text(encoding="utf-8"))
                 try:
                     scored[frozen["gw"]] = score_blind(store.con, frozen)
+                    accuracy[frozen["gw"]] = blind_accuracy(store.con, frozen)
                 except RuntimeError as e:
                     if not args.all:
                         raise
@@ -423,6 +436,9 @@ def main(argv: list[str] | None = None) -> int:
                     for who, r in by_who.items():
                         print(f"GW{gw:<3d}{name:15s} {who:6s} {r['achieved']:6.1f} / "
                               f"{r['ceiling']:6.1f} = {r['captured_fraction']:.3f}")
+                for name, a in accuracy[gw].items():
+                    print(f"GW{gw:<3d}{name:15s} per-player (pred >= 1.0): n={a['n']} "
+                          f"MAE {a['mae']:.2f} Spearman {a['spearman']:.3f}")
             if len(scored) > 1:
                 print(f"-- mean over {len(scored)} gameweeks ({sorted(scored)})")
                 for (name, who), (mean, n) in mean_captured(scored).items():

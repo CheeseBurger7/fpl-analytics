@@ -1,4 +1,4 @@
-# Status (last updated: 2026-11-05, GW10 frozen, Mbeumo transfer chosen; earlier: 2026-11-03 GW9 scored; earlier: 2026-10-29 open-questions pass, `xp` DGW fix, odds ingest)
+# Status (last updated: 2026-11-20, GW11 rerun + frozen; earlier: 2026-11-09 GW10 scored; earlier: 2026-11-05 GW10 frozen, Mbeumo transfer chosen; earlier: 2026-11-03 GW9 scored; earlier: 2026-10-29 open-questions pass, `xp` DGW fix, odds ingest)
 
 ## Done
 | PR | What |
@@ -11,7 +11,9 @@
 | #8 | Live adapter `fpl.live` + `fpl blind-pick`; GW8 2026-27 picks frozen |
 | #10 | `fpl blind-score` scorer |
 | #10 | `fpl blind-score` scorer; GW8 scored (fresh fpl_ep 0.607, rolling_mean_5 0.324) |
-| (this PR) | GW10 frozen (`blind_gw10.json`, snapshot 12) and transfer decision logged: Gibbs-White -> Mbeumo (`lgbm` +5.0 over GW10-12) |
+| (this PR) | `blind-score` prints per-player MAE / Spearman and scores the hand-added `manual` team as predictor `manual` (GW10: 48 / 71 = 0.676); tests added; GW11 predictions run 2026-11-09 (see model-scoreboard.md ledger) |
+| (this PR) | New [model-scoreboard.md](model-scoreboard.md): per-model live scores and transfer ledger; `blind-pick --model` now also freezes plain `lgbm` (was missing: GW8-10 have no live `lgbm` score); GW10 scored 2026-11-09 (fresh rolling_mean_5 0.547, fpl_ep 0.466, lgbm_xp(ep) 0.399; user's real team 48 pts, 18 on bench); 3-GW means in the standing chores |
+| #29 | GW10 frozen (`blind_gw10.json`, snapshot 12) and transfer decision logged: Gibbs-White -> Mbeumo (`lgbm` +5.0 over GW10-12) |
 | #27 | GW9 scored (fresh rolling_mean_5 0.446, fpl_ep 0.554, lgbm_xp(ep) 0.454; entry 0.784 / 0.784 / 0.886); task-log.md reduced to next task + improvements |
 | #11 | `fpl.model` LightGBM; lgbm_xp captured fraction 0.793 vs fpl_xp 0.618 (2024-25) |
 | #12 | `fpl.planner` + `fpl transfers`, glossary, GW8 blind score recorded |
@@ -46,12 +48,38 @@ Standing chores (do whenever a GW passes):
   (5.62 xp); lgbm_xp(ep) picks Evanilson (5.54) with Haaland 4.44. Frozen 2026-11-06 (`blind-pick --gw 10 --model`, snapshot 13); the user's real team is stored under a
   hand-added `manual` key in `blind_gw10.json` (3-4-3: Raya; Konsa, Calafiori, Van Hecke; Palmer, Rogers,
   Tavernier, Mbeumo; Haaland (C), Calvert-Lewin, Evanilson; bench Muharemović, Davis, Gomez, Bentley).
-  `blind-score` does not read `manual` yet. `blind-pick` overwrites an existing file: check first.
+  `blind-score` reads `manual` since 2026-11-09. `blind-pick` overwrites an existing file: check first.
   Rerun after the user's real transfer (Gibbs-White -> Mbeumo): lgbm 3-5-2 with Mbeumo 5.22 (captain
   Haaland 5.62); lgbm_xp Mbeumo 6.84 (captain Mbeumo). Playing Calvert-Lewin (3-4-3) costs 0.3-0.75 pts.
   Tip: `python -X utf8` is needed to print names like Muharemović on Windows (cp1252 otherwise).
+- **GW10 scored 2026-11-09** (snapshot 14, `fpl history` first; hindsight ceiling 148): fresh rolling_mean_5
+  81 = 0.547, fpl_ep 69 = 0.466, lgbm_xp(ep) 59 = 0.399. Means over GW8-10 (fresh): rolling_mean_5 0.439
+  (n=3), fpl_ep 0.542 (n=3), lgbm_xp(ep) 0.426 (n=2): `ep`-as-`xp` is not beating `fpl_ep`. Per-player
+  GW10 (players predicted >= 1.0): MAE 2.13 / 2.22 / 2.18, Spearman 0.327 / 0.317 / 0.245
+  (rolling_mean_5 / fpl_ep / lgbm_xp). No `entry` rows for GW10: the frozen file's `entry` is the GW9
+  squad; the `manual` team scores 48 / 71 = 0.676. Plain `lgbm` is not in the file.
+- **GW11 rerun + frozen 2026-11-20 (snapshot 16, `blind_gw11.json`, all four predictors incl. `lgbm`):**
+  same state (GW10 squad, bank 1.6m, 1 free, bench boost). All four models still pick Calvert-Lewin ->
+  N.Jackson as the best single transfer (`lgbm` +5.9 over GW11-14, +1.8 for GW11); no hit worth it for
+  `lgbm` (+0.3). `fpl_ep` / `lgbm_xp` now like a Haaland hit (`ep_next` 4.0, no injury flag: form only).
+  `lgbm` XI after the transfer: Raya; Calafiori, Konsa, Van Hecke; Tavernier, Rogers, Palmer, Mbeumo;
+  N.Jackson, Evanilson, Haaland; captain Palmer 5.52 (Haaland 5.3); 53.7 pts. Others captain N.Jackson
+  (`fpl_ep`, `lgbm_xp`) or Konsa (`rolling_mean_5`). Add the real team as `manual` once chosen.
+  Haaland check (2026-11-20): 2, 2 pts in GW9-10, 9 goals on 7.06 xG, 78.8% owned; fixtures GW11-14 FUL(h,2)
+  ARS(a,5) LEE(h,3) BRE(a,4). Single-transfer gains GW11-14 (XI/captain aware): Haaland out is +1.9 (Isak) for
+  `lgbm`, +29.2 / +10.4 (N.Jackson) for `fpl_ep` / `rolling_mean_5`, but it competes with Calvert-Lewin ->
+  N.Jackson (+5.9 / +33.2 / +18.4). Advice: keep Haaland for FUL at home, revisit before GW12 (Haaland -> Isak).
+  Other candidates: Gomez -> Groß +5.0, Calafiori / Muharemović -> Tarkowski +4.3 (`lgbm`); Davis -> Vuskovic
+  +13.6 (`rolling_mean_5`; also helps the bench boost).
+- GW11 run 2026-11-09 (snapshot 15): squad = GW10
+  picks, bank 1.6m, 1 free, bench boost left, no blank / double GWs in the schedule. Calvert-Lewin ->
+  N.Jackson is the best single transfer for `lgbm` (+5.9), `fpl_ep` and `rolling_mean_5`; no hit is worth
+  it (`lgbm` 2 transfers +0.3 net). Details and captains: model-scoreboard.md section 4. Freeze with
+  `fpl blind-pick --gw 11 --model` close to the deadline (fresh injury news), after `fpl snapshot`. User's real GW10 team
+  (`manual`): 48 pts (matches the FPL total), 18 on the bench (Muharemović 10, Gomez 9, Davis -1);
+  Haaland (C) 2 pts, Mbeumo 2, Calvert-Lewin 2, Palmer 2; Evanilson 9, Konsa 8. Overall rank 1.93m.
 - Log `ep` every GW: `fpl snapshot` before each deadline, `fpl blind-pick --gw N --model` (before
-  kickoffs), `fpl transfers`, then `fpl blind-score --gw N`. No `ep` history exists yet, so the
+  kickoffs; `--model` freezes `lgbm` + `lgbm_xp(ep)` since 2026-11-09, GW8-10 files have no `lgbm`), `fpl transfers`, then `fpl blind-score --gw N`. No `ep` history exists yet, so the
   `ep`-as-`xp` decision rests on one gameweek (GW8).
 Still open from the planner-realism task (selling price and auto-subs DONE, small effect):
 verifying `xp` timing (absolute backtest points of 74-83/GW are optimistic). Real free-transfer/chip

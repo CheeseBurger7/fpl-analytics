@@ -83,12 +83,19 @@ for the actual route. Chips are not modelled (the planner reports chips left onl
 ## 6. Freeze and score (builds the live track record)
 ```
 fpl blind-pick --gw N --model          # freezes predictions + picks to data/processed/blind_gw<N>.json
-                                       # (--model adds lgbm_xp fed ep; ~15 s to train; add --entry-id for your picks)
+                                       # (--model adds lgbm AND lgbm_xp(ep); ~30 s to train; add --entry-id for your picks)
 # ... after GW N finishes and the data has caught up:
 fpl snapshot
-fpl blind-score --gw N                 # achieved vs hindsight ceiling, captured fraction per predictor
+fpl blind-score --gw N                 # achieved vs hindsight ceiling, captured fraction per predictor,
+                                       # per-player MAE / Spearman, and `manual` (your real team) if the
+                                       # frozen file has a hand-added `manual` {xi, bench, captain} key
 fpl blind-score --all                  # all finished GWs with means
 ```
+**Always pass `--model`.** Without it the file has only `rolling_mean_5` and `fpl_ep`; the model that
+drives `fpl transfers` (`lgbm`) would be unscored. Check the printed lines list all four predictors
+(`rolling_mean_5`, `fpl_ep`, `lgbm`, `lgbm_xp(ep)`) before the first kickoff. (GW8-10 files lack `lgbm`:
+before 2026-11-09 `--model` froze only `lgbm_xp(ep)`.) `blind-pick` overwrites an existing file for the
+GW: check `data/processed/blind_gw<N>.json` first.
 Freeze **before the first kickoff** or the comparison is not blind. Record the numbers in
 [status.md](status.md); the live `ep` history is the only clean test of the `xp` question.
 
