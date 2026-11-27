@@ -12,10 +12,10 @@ Start from `main`; read `status.md`, `glossary.md`, `decisions.md`.
    `model-scoreboard.md`, before the first kickoff (add the user's squad as `entry`, see below), `fpl transfers --gw N`; after
    the GW `fpl snapshot`, `fpl blind-score --gw N` and `--all`. Record the numbers in `status.md`. The live
    `ep` history is the only clean test of the `xp` / `ep`-as-`xp` question; GW8-9 exist so far.
-2. **GW11:** rerun and frozen 2026-11-20 (snapshot 16, `blind_gw11.json` incl. `lgbm`). Pending: the user's
-   real transfer (all models: Calvert-Lewin -> N.Jackson) and captain; add them as `manual` in
-   `blind_gw11.json` and a ledger row. After GW11: `fpl snapshot`, `fpl history`, `fpl blind-score --gw 11`
-   (first live `lgbm` score).
+2. **GW12:** transfers made 2026-11-27 (Raya -> A.Becker, Mbeumo -> Wirtz; ledger row in
+   `model-scoreboard.md`), frozen to `blind_gw12.json` (snapshot 20). Next: after the deadline (2026-11-27
+   18:30 UTC) `fpl entry` and add `manual` from `entry_picks` GW12 (xi = slots 1-11, captain, vice, bench);
+   after GW12 `fpl snapshot`, `fpl history`, `fpl blind-score --gw 12`, `--all`. GW13 has 1 free transfer.
 
 ## Current-GW notes (GW10-12, run 2026-11-03, squad = GW9 picks, bank 1.7, 1 free, bench boost left)
 - `lgbm` (default): hold 150.7; best 1 transfer Gibbs-White -> Mbeumo 155.7 (+5.0); 2 transfers 155.3;
@@ -70,11 +70,13 @@ Tooling
 - `fpl lineup` / `fpl squad` CLI command to replace the Python snippets in `running-predictions.md`.
 - `blind-pick` cannot see a transfer not yet stored (no GW N picks until the deadline passes); add the
   user's squad to `entry` by hand, or let `blind-pick` take an explicit squad.
+- `blind-score` / `blind-pick`: build `manual` from `entry_picks` automatically once the deadline has
+  passed (the GW11 hand entry had wrong ids). Also check `manual` ids against the frozen snapshot.
 - Differentials and explorer (original scope).
 
 ## Open questions
 - Does `ep`-as-`xp` (`lgbm_xp(ep)`) beat `fpl_ep` and `lgbm` over several GWs? GW8 0.828 vs 0.566 (fresh,
-  different computation); GW9 fresh 0.454 vs 0.554; GW10 0.399 vs 0.466 (and rolling_mean_5 0.547). Two of three GWs
+  different computation); GW9 fresh 0.454 vs 0.554; GW10 0.399 vs 0.466 (and rolling_mean_5 0.547); GW11 0.377 vs 0.357 (`lgbm` 0.260). Two of four GWs
   lose to `fpl_ep`; needs more GWs.
 - After `fpl entry` on 2026-10-30, `entry_transfers` had no GW9 row although the Pedro -> Evanilson
   transfer was made; unverified whether the public endpoint only lists transfers after the deadline.

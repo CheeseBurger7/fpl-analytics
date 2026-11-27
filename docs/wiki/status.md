@@ -1,4 +1,4 @@
-# Status (last updated: 2026-11-20, GW11 rerun + frozen; earlier: 2026-11-09 GW10 scored; earlier: 2026-11-05 GW10 frozen, Mbeumo transfer chosen; earlier: 2026-11-03 GW9 scored; earlier: 2026-10-29 open-questions pass, `xp` DGW fix, odds ingest)
+# Status (last updated: 2026-11-27, GW12 transfers + frozen; earlier: 2026-11-25, GW11 scored; earlier: 2026-11-20, GW11 rerun + frozen; earlier: 2026-11-09 GW10 scored; earlier: 2026-11-05 GW10 frozen, Mbeumo transfer chosen; earlier: 2026-11-03 GW9 scored; earlier: 2026-10-29 open-questions pass, `xp` DGW fix, odds ingest)
 
 ## Done
 | PR | What |
@@ -71,6 +71,24 @@ Standing chores (do whenever a GW passes):
   N.Jackson (+5.9 / +33.2 / +18.4). Advice: keep Haaland for FUL at home, revisit before GW12 (Haaland -> Isak).
   Other candidates: Gomez -> Groß +5.0, Calafiori / Muharemović -> Tarkowski +4.3 (`lgbm`); Davis -> Vuskovic
   +13.6 (`rolling_mean_5`; also helps the bench boost).
+  **User's GW11 choice:** no transfer (2 free in GW12), captain Haaland, Palmer + Mbeumo start. Stored as
+  `manual` in `blind_gw11.json`: 4-4-2 Raya; Konsa, Van Hecke, Calafiori, Muharemović; Tavernier, Rogers,
+  Palmer, Mbeumo; Haaland (C), Evanilson (V); bench Gomez, Calvert-Lewin, Davis, Bentley.
+  Tavernier -> Groß checked 2026-11-20 (GW11-14 gain): `lgbm` +3.0, `fpl_ep` -5.2, `rolling_mean_5` -3.2,
+  `lgbm_xp` -5.8: not recommended. Calvert-Lewin -> N.Jackson stays the GW12 priority (+5.9 / +33.2 / +18.4 / +32.4).
+- **GW11 scored 2026-11-25** (snapshot 17, `fpl history`, `fpl entry`; ceiling 154): fresh rolling_mean_5
+  27 = 0.175, fpl_ep 55 = 0.357, lgbm 40 = 0.260 (first live `lgbm`), lgbm_xp(ep) 58 = 0.377. Means (fresh):
+  rolling_mean_5 0.373 (n=4), fpl_ep 0.496 (n=4), lgbm_xp(ep) 0.410 (n=3), lgbm 0.260 (n=1). Per-player:
+  `lgbm` best (MAE 2.12, Spearman 0.328). User 44 pts (= FPL), 44 / 54 = 0.815; real XI was 3-4-3 with
+  Calvert-Lewin (9) starting, Mbeumo vice, Muharemović benched: the hand-added `manual` key was wrong
+  (ids 301 / 359 are a different Palmer / Gomez) and was rebuilt from `entry_picks`. Holding Calvert-Lewin
+  beat N.Jackson by 7 in GW11; Mbeumo vs Gibbs-White is -4 after two GWs.
+- **GW12 plan 2026-11-25** (snapshot 17, 2 free, bank 1.6m): models split (`lgbm` Raya + Calafiori -> A.Becker +
+  Gabriel +10.5; `ep` / form models Mbeumo -> Wirtz). Recommended Raya + Mbeumo -> A.Becker + Wirtz: positive
+  under all four (+6.4 / +37.6 / +14.0 / +33.6), ~2.6m left, fixes Raya's injury (50%). Details:
+  model-scoreboard.md section 4. **Done 2026-11-27:** user made Raya -> A.Becker, Mbeumo -> Wirtz (both free);
+  GW12 frozen (snapshot 20, `blind_gw12.json`, all four predictors). After the deadline: rebuild `manual` from
+  `entry_picks` (`fpl entry`), then after GW12 `fpl snapshot`, `fpl history`, `fpl blind-score --gw 12`.
 - GW11 run 2026-11-09 (snapshot 15): squad = GW10
   picks, bank 1.6m, 1 free, bench boost left, no blank / double GWs in the schedule. Calvert-Lewin ->
   N.Jackson is the best single transfer for `lgbm` (+5.9), `fpl_ep` and `rolling_mean_5`; no hit is worth
